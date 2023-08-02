@@ -2,20 +2,21 @@ package manifest_controller_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	"github.com/kyma-project/lifecycle-manager/internal/manifest"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/resource"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -38,7 +39,7 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(installManifest(testManifest, imageSpecByte, false)).To(Succeed())
+		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
 
 		Eventually(expectManifestStateIn(declarative.StateReady), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
@@ -47,7 +48,20 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		By("Verifying that deployment and Sample CR are deployed and ready")
 		deploy := &appsv1.Deployment{}
-		Expect(verifyDeploymentInstallation(deploy)).To(Succeed())
+		Expect(setDeploymentStatus(deploy)).To(Succeed())
+		sampleCR := emptySampleCR()
+		Expect(setCRStatus(sampleCR)).To(Succeed())
+
+		By("Verifying manifest status list all resources correctly")
+		status, err := getManifestStatus(manifestName)
+		Expect(err).ToNot(HaveOccurred())
+		dumpAsJson(">>", status)
+
+		Expect(status.Synced).To(HaveLen(2))
+		expectedDeployment := asResource("nginx-deployment", "default", "apps", "v1", "Deployment")
+		expectedCRD := asResource("samples.operator.kyma-project.io", "", "apiextensions.k8s.io", "v1", "CustomResourceDefinition")
+		Expect(status.Synced).To(ContainElement(expectedDeployment))
+		Expect(status.Synced).To(ContainElement(expectedCRD))
 
 		By("Preparing resources for the CR readiness check")
 		resources, err := prepareResourceInfosForCustomCheck(testClient, deploy)
@@ -57,6 +71,7 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		By("Executing the CR readiness check")
 		customReadyCheck := manifest.NewCustomResourceReadyCheck()
 		stateInfo, err := customReadyCheck.Run(ctx, testClient, testManifest, resources)
+
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stateInfo.State).To(Equal(declarative.StateReady))
 
@@ -65,7 +80,45 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 	})
 })
 
-func verifyDeploymentInstallation(deploy *appsv1.Deployment) error {
+func asResource(name, namespace, group, version, kind string) declarative.Resource {
+	return declarative.Resource{Name: name, Namespace: namespace,
+		GroupVersionKind: metav1.GroupVersionKind{
+			Group: group, Version: version, Kind: kind},
+	}
+}
+
+func emptySampleCR() *unstructured.Unstructured {
+	res := &unstructured.Unstructured{}
+	res.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kyma-project.io", Version: "v1alpha1", Kind: "Sample"})
+	res.SetName("sample-crd-from-manifest")
+	res.SetNamespace(metav1.NamespaceDefault)
+	return res
+}
+
+func dumpAsJson(prefix string, obj any) {
+	objSer, err := json.MarshalIndent(obj, prefix, "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(objSer))
+}
+
+func setCRStatus(cr *unstructured.Unstructured) error {
+	err := k8sClient.Get(
+		ctx, client.ObjectKeyFromObject(cr),
+		cr,
+	)
+	if err != nil {
+		return err
+	}
+	unstructured.SetNestedMap(cr.Object, map[string]any{}, "status")
+	unstructured.SetNestedField(cr.Object, "Ready", "status", "state")
+	err = k8sClient.Status().Update(ctx, cr)
+	return err
+}
+
+// func verifyDeploymentInstallation(deploy *appsv1.Deployment) error {
+func setDeploymentStatus(deploy *appsv1.Deployment) error {
 	err := k8sClient.Get(
 		ctx, client.ObjectKey{
 			Namespace: metav1.NamespaceDefault,
