@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,10 +29,12 @@ func NewConcurrentCleanup(clnt client.Client) Cleanup {
 }
 
 func (c *ConcurrentCleanup) Run(ctx context.Context, infos []*resource.Info) error {
+
 	// The Runtime Complexity of this Branch is N as only ServerSideApplier Patch is required
 	results := make(chan error, len(infos))
 	for i := range infos {
 		i := i
+		fmt.Println("====> c.cleanupResource:", infos[i].Namespace+"/"+infos[i].Name)
 		go c.cleanupResource(ctx, infos[i], results)
 	}
 
@@ -63,5 +66,8 @@ func (c *ConcurrentCleanup) cleanupResource(ctx context.Context, info *resource.
 	if !ok {
 		return
 	}
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	fmt.Println("Deleting: ", info.Namespace, "/", info.Name)
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 	results <- c.clnt.Delete(ctx, obj, c.policy)
 }

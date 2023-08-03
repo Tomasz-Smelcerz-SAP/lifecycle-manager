@@ -8,6 +8,7 @@ import (
 
 	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	"github.com/kyma-project/lifecycle-manager/internal/manifest"
+	"github.com/kyma-project/lifecycle-manager/pkg/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -55,9 +56,9 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		By("Verifying manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
 		Expect(err).ToNot(HaveOccurred())
-		dumpAsJson(">>", status)
 
 		Expect(status.Synced).To(HaveLen(2))
+
 		expectedDeployment := asResource("nginx-deployment", "default", "apps", "v1", "Deployment")
 		expectedCRD := asResource("samples.operator.kyma-project.io", "", "apiextensions.k8s.io", "v1", "CustomResourceDefinition")
 		Expect(status.Synced).To(ContainElement(expectedDeployment))
@@ -76,9 +77,39 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(stateInfo.State).To(Equal(declarative.StateReady))
 
 		By("cleaning up the manifest")
+		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
+		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
+		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeTrue())
+
 		Eventually(deleteManifestAndVerify(testManifest), standardTimeout, standardInterval).Should(Succeed())
+
+		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeFalse())
+		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
+		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
+
+		status, err = getManifestStatus(manifestName)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(status.Synced).To(HaveLen(0))
 	})
 })
+
+func verifyObjectExists(obj *unstructured.Unstructured) func() (bool, error) {
+	return func() (bool, error) {
+
+		err := k8sClient.Get(
+			ctx, client.ObjectKeyFromObject(obj),
+			obj,
+		)
+
+		if err == nil {
+			return true, nil
+		} else if util.IsNotFound(err) {
+			return false, nil
+		}
+
+		return false, err
+	}
+}
 
 func asResource(name, namespace, group, version, kind string) declarative.Resource {
 	return declarative.Resource{Name: name, Namespace: namespace,

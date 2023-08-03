@@ -79,7 +79,17 @@ func PreDeleteDeleteCR(
 
 	resource := manifest.Spec.Resource.DeepCopy()
 	propagation := v1.DeletePropagationBackground
-	err := skr.Delete(ctx, resource, &client.DeleteOptions{PropagationPolicy: &propagation})
+
+	res2 := resource.DeepCopy()
+	err := skr.Get(ctx, client.ObjectKeyFromObject(resource), res2)
+	if err != nil {
+		fmt.Println("error getting PreDeleteDeleteCR():" + err.Error())
+	} else {
+		fmt.Printf("%#v\n", res2)
+	}
+
+	err = skr.Delete(ctx, resource, &client.DeleteOptions{PropagationPolicy: &propagation})
+
 	if err == nil {
 		return ErrWaitingForAsyncCustomResourceDeletion
 	}

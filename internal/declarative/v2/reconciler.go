@@ -2,6 +2,7 @@ package v2
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -142,8 +143,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return r.ssaStatus(ctx, obj)
 	}
-
 	diff := ResourceList(current).Difference(target)
+
 	if err := r.pruneDiff(ctx, clnt, obj, renderer, diff, spec); errors.Is(err, ErrDeletionNotFinished) {
 		return ctrl.Result{Requeue: true}, nil
 	} else if err != nil {
@@ -164,6 +165,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{Requeue: true}, r.Update(ctx, obj)
 	}
 	return r.CtrlOnSuccess, nil
+}
+
+func dumpAsJson(prefix string, obj any) {
+	objSer, err := json.MarshalIndent(obj, prefix, "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(objSer))
 }
 
 func (r *Reconciler) removeFinalizers(ctx context.Context, obj Object, finalizersToRemove []string) (
@@ -369,6 +378,13 @@ func generateOperationMessage(installationCondition metav1.Condition, stateInfo 
 func (r *Reconciler) deleteResources(
 	ctx context.Context, clnt Client, obj Object, diff []*resource.Info,
 ) error {
+	fmt.Println("!!! deleteResources !!!", len(diff))
+	fmt.Println("========================================")
+	for _, dff := range diff {
+		fmt.Println("diff   : ", dff.Namespace+"/"+dff.Name)
+	}
+	fmt.Println("========================================")
+
 	status := obj.GetStatus()
 
 	if !obj.GetDeletionTimestamp().IsZero() {
@@ -376,11 +392,13 @@ func (r *Reconciler) deleteResources(
 			if err := preDelete(ctx, clnt, r.Client, obj); err != nil {
 				r.Event(obj, "Warning", "PreDelete", err.Error())
 				// we do not set a status here since it will be deleting if timestamp is set.
+				fmt.Println("==========> An error:", err.Error())
 				return err
 			}
 		}
 	}
 
+	fmt.Println("!!! NewConcurrentCleanup !!!", len(diff))
 	if err := NewConcurrentCleanup(clnt).Run(ctx, diff); errors.Is(err, ErrDeletionNotFinished) {
 		r.Event(obj, "Normal", "Deletion", err.Error())
 		return err
@@ -454,6 +472,7 @@ func (r *Reconciler) pruneDiff(
 	}
 
 	if manifestNotInDeletingAndOciRefNotChangedButDiffDetected(diff, obj, spec) {
+		fmt.Println("!!! manifestNotInDeletingAndOciRefNotChangedButDiffDetected !!!")
 		// This case should not happen normally, but if happens, it means the resources read from cache is incomplete,
 		// and we should prevent diff resources to be deleted.
 		// Meanwhile, evict cache to hope newly created resources back to normal.
