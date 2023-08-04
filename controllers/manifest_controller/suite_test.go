@@ -149,7 +149,7 @@ var _ = BeforeSuite(
 			WithOptions(
 				controller.Options{
 					RateLimiter: internal.ManifestRateLimiter(
-						1*time.Second, 1000*time.Second,
+						1*time.Second, 3*time.Second,
 						30, 200,
 					),
 					MaxConcurrentReconciles: 1,

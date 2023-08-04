@@ -88,8 +88,8 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
 
 		status, err = getManifestStatus(manifestName)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(status.Synced).To(HaveLen(0))
+		Expect(err).To(HaveOccurred())
+		Expect(util.IsNotFound(err)).To(BeTrue())
 	})
 })
 
@@ -148,7 +148,6 @@ func setCRStatus(cr *unstructured.Unstructured) error {
 	return err
 }
 
-// func verifyDeploymentInstallation(deploy *appsv1.Deployment) error {
 func setDeploymentStatus(deploy *appsv1.Deployment) error {
 	err := k8sClient.Get(
 		ctx, client.ObjectKey{

@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -80,15 +81,21 @@ func PreDeleteDeleteCR(
 	resource := manifest.Spec.Resource.DeepCopy()
 	propagation := v1.DeletePropagationBackground
 
+	fmt.Println("~~~~~~~~~~ Executing PreDeleteDeleteCR() ~~~~~~~~~~")
 	res2 := resource.DeepCopy()
 	err := skr.Get(ctx, client.ObjectKeyFromObject(resource), res2)
 	if err != nil {
 		fmt.Println("error getting PreDeleteDeleteCR():" + err.Error())
 	} else {
-		fmt.Printf("%#v\n", res2)
+		crdSer, err := json.MarshalIndent(res2, "~~~ ", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(crdSer))
 	}
 
 	err = skr.Delete(ctx, resource, &client.DeleteOptions{PropagationPolicy: &propagation})
+	//err = skr.Delete(ctx, resource)
 
 	if err == nil {
 		return ErrWaitingForAsyncCustomResourceDeletion

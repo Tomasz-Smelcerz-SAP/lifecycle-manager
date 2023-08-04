@@ -460,6 +460,10 @@ func (r *Reconciler) pruneDiff(
 	diff []*resource.Info,
 	spec *Spec,
 ) error {
+	if len(diff) == 0 {
+		return nil
+	}
+
 	var err error
 	diff, err = pruneResource(diff, "Namespace", namespaceNotBeRemoved)
 	if err != nil {
