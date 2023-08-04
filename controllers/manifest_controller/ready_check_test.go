@@ -83,13 +83,10 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 
 		Eventually(deleteManifestAndVerify(testManifest), standardTimeout, standardInterval).Should(Succeed())
 
+		By("verify target resources got deleted")
 		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeFalse())
 		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
 		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
-
-		status, err = getManifestStatus(manifestName)
-		Expect(err).To(HaveOccurred())
-		Expect(util.IsNotFound(err)).To(BeTrue())
 	})
 })
 
