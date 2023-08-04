@@ -2,6 +2,7 @@ package manifest_controller_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -109,14 +110,20 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
 
+		By("Verifying that deployment and Sample CR are deployed and ready")
+		deploy := &appsv1.Deployment{}
+		Eventually(setDeploymentStatus(deploy)).Should(Succeed())
+		sampleCR := emptySampleCR()
+		Expect(setCRStatus(sampleCR, declarative.StateWarning)).To(Succeed())
+
+		By("Verifying manifest is in Ready state")
 		Eventually(expectManifestStateIn(declarative.StateReady), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
 
-		By("Verifying that deployment and Sample CR are deployed and ready")
-		deploy := &appsv1.Deployment{}
-		Expect(setDeploymentStatus(deploy)).To(Succeed())
-		sampleCR := emptySampleCR()
-		Expect(setCRStatus(sampleCR, declarative.StateWarning)).To(Succeed())
+		un2 := sampleCR.DeepCopy()
+		err = k8sClient.Get(ctx, client.ObjectKeyFromObject(un2), un2)
+		Expect(err).To(BeNil())
+		dumpAsJson(">>", un2)
 
 		By("Verifying manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
@@ -181,29 +188,31 @@ func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) e
 	return err
 }
 
-func setDeploymentStatus(deploy *appsv1.Deployment) error {
-	err := k8sClient.Get(
-		ctx, client.ObjectKey{
-			Namespace: metav1.NamespaceDefault,
-			Name:      "nginx-deployment",
-		}, deploy,
-	)
-	if err != nil {
-		return err
+func setDeploymentStatus(deploy *appsv1.Deployment) func() error {
+	return func() error {
+		err := k8sClient.Get(
+			ctx, client.ObjectKey{
+				Namespace: metav1.NamespaceDefault,
+				Name:      "nginx-deployment",
+			}, deploy,
+		)
+		if err != nil {
+			return err
+		}
+		deploy.Status.Replicas = *deploy.Spec.Replicas
+		deploy.Status.ReadyReplicas = *deploy.Spec.Replicas
+		deploy.Status.AvailableReplicas = *deploy.Spec.Replicas
+		deploy.Status.Conditions = append(deploy.Status.Conditions,
+			appsv1.DeploymentCondition{
+				Type:   appsv1.DeploymentAvailable,
+				Status: corev1.ConditionTrue,
+			})
+		err = k8sClient.Status().Update(ctx, deploy)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	deploy.Status.Replicas = *deploy.Spec.Replicas
-	deploy.Status.ReadyReplicas = *deploy.Spec.Replicas
-	deploy.Status.AvailableReplicas = *deploy.Spec.Replicas
-	deploy.Status.Conditions = append(deploy.Status.Conditions,
-		appsv1.DeploymentCondition{
-			Type:   appsv1.DeploymentAvailable,
-			Status: corev1.ConditionTrue,
-		})
-	err = k8sClient.Status().Update(ctx, deploy)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func prepareResourceInfosForCustomCheck(clt declarative.Client, deploy *appsv1.Deployment) ([]*resource.Info, error) {
@@ -228,4 +237,12 @@ func declarativeTestClient() (declarative.Client, error) {
 	}
 
 	return declarative.NewSingletonClients(cluster)
+}
+
+func dumpAsJson(prefix string, obj any) {
+	objSer, err := json.MarshalIndent(obj, prefix, "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(objSer))
 }

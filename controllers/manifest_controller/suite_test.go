@@ -139,7 +139,7 @@ var _ = BeforeSuite(
 			manifest.WithClientCacheKey(),
 			declarative.WithPostRun{manifest.PostRunCreateCR},
 			declarative.WithPreDelete{manifest.PreDeleteDeleteCR},
-			declarative.WithCustomReadyCheck(declarative.NewExistsReadyCheck()),
+			declarative.WithCustomReadyCheck(manifest.NewCustomResourceReadyCheck()),
 			declarative.WithModuleCRDName(manifest.GetModuleCRDName),
 		)
 

@@ -282,6 +282,12 @@ func (r *Reconciler) renderResources(
 func (r *Reconciler) syncResources(ctx context.Context, clnt Client, obj Object, target []*resource.Info) error {
 	status := obj.GetStatus()
 
+	fmt.Println("----------------------------------------")
+	fmt.Println("syncResources")
+	for _, resr := range target {
+		fmt.Println(resr.Namespace + "/" + resr.Name)
+	}
+	fmt.Println("----------------------------------------")
 	if err := ConcurrentSSA(clnt, r.FieldOwner).Run(ctx, target); err != nil {
 		r.Event(obj, "Warning", "ServerSideApply", err.Error())
 		obj.SetStatus(status.WithState(StateError).WithErr(err))
@@ -332,11 +338,19 @@ func hasDiff(oldResources []Resource, newResources []Resource) bool {
 func (r *Reconciler) checkTargetReadiness(
 	ctx context.Context, clnt Client, manifest Object, target []*resource.Info,
 ) error {
+	fmt.Println("========================================")
+	fmt.Println("checkTargetReadiness()")
+	for _, trgt := range target {
+		fmt.Println(trgt.Namespace + "/" + trgt.Name)
+	}
+
 	status := manifest.GetStatus()
 
 	resourceReadyCheck := r.CustomReadyCheck
 
 	crStateInfo, err := resourceReadyCheck.Run(ctx, clnt, manifest, target)
+	fmt.Println(crStateInfo.State)
+	fmt.Println("========================================")
 	if err != nil {
 		r.Event(manifest, "Warning", "ResourceReadyCheck", err.Error())
 		manifest.SetStatus(status.WithState(StateError).WithErr(err))
