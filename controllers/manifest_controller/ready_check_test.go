@@ -42,16 +42,9 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
 
-		Eventually(expectManifestStateIn(declarative.StateReady), standardTimeout, standardInterval).
+		By("Verifying that the manifest is initially in the Processing state")
+		Eventually(expectManifestStateIn(declarative.StateProcessing), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
-
-		testClient, err := declarativeTestClient()
-		Expect(err).ToNot(HaveOccurred())
-		By("Verifying that deployment and Sample CR are deployed and ready")
-		deploy := &appsv1.Deployment{}
-		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
-		sampleCR := emptySampleCR()
-		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
 
 		By("Verifying manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
@@ -63,12 +56,20 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(status.Synced).To(ContainElement(expectedDeployment))
 		Expect(status.Synced).To(ContainElement(expectedCRD))
 
+		By("Verifying that deployment and Sample CR are deployed and ready")
+		deploy := &appsv1.Deployment{}
+		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
+		sampleCR := emptySampleCR()
+		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
+
 		By("Preparing resources for the CR readiness check")
+		testClient, err := declarativeTestClient()
+		Expect(err).ToNot(HaveOccurred())
 		resources, err := prepareResourceInfosForCustomCheck(testClient, deploy)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resources).ToNot(BeEmpty())
 
-		By("Executing the CR readiness check")
+		By("Executing the CR readiness check reports the state is Ready")
 		customReadyCheck := manifest.NewCustomResourceReadyCheck()
 		stateInfo, err := customReadyCheck.Run(ctx, testClient, testManifest, resources)
 
