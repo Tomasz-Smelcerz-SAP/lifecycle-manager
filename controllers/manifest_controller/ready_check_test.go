@@ -49,9 +49,9 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		By("Verifying that deployment and Sample CR are deployed and ready")
 		deploy := &appsv1.Deployment{}
-		Expect(setDeploymentStatus(deploy)).To(Succeed())
+		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
 		sampleCR := emptySampleCR()
-		Expect(setCRStatus(sampleCR, declarative.StateReady)).To(Succeed())
+		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
 
 		By("Verifying manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
@@ -103,6 +103,7 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		},
 	)
 	It("Install OCI specs including an nginx deployment", func() {
+		By("Install test Manifest CR")
 		testManifest := NewTestManifest("custom-check-oci")
 		manifestName := testManifest.GetName()
 		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
@@ -110,32 +111,36 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
 
-		By("Verifying that deployment and Sample CR are deployed and ready")
+		By("Ensure that deployment and Sample CR are deployed and ready")
 		deploy := &appsv1.Deployment{}
-		Eventually(setDeploymentStatus(deploy)).Should(Succeed())
+		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
 		sampleCR := emptySampleCR()
-		Expect(setCRStatus(sampleCR, declarative.StateWarning)).To(Succeed())
+		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
 
-		By("Verifying manifest is in Ready state")
+		By("Verify the Manifest CR is in the \"Ready\" state")
 		Eventually(expectManifestStateIn(declarative.StateReady), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
 
-		un2 := sampleCR.DeepCopy()
-		err = k8sClient.Get(ctx, client.ObjectKeyFromObject(un2), un2)
-		Expect(err).To(BeNil())
-		dumpAsJson(">>", un2)
+		/*
+			un2 := sampleCR.DeepCopy()
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(un2), un2)
+			Expect(err).To(BeNil())
+			dumpAsJson(">>", un2)
+		*/
 
-		By("Verifying manifest status list all resources correctly")
+		By("Verify manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(status.Synced).To(HaveLen(2))
-
 		expectedDeployment := asResource("nginx-deployment", "default", "apps", "v1", "Deployment")
 		expectedCRD := asResource("samples.operator.kyma-project.io", "", "apiextensions.k8s.io", "v1", "CustomResourceDefinition")
 		Expect(status.Synced).To(ContainElement(expectedDeployment))
 		Expect(status.Synced).To(ContainElement(expectedCRD))
 
-		By("Verify manifest status")
+		By("When the Module CR state is changed to \"Warning\"")
+		Eventually(setCRStatus(sampleCR, declarative.StateWarning), standardTimeout, standardInterval).Should(Succeed())
+
+		By("Verify the Manifest CR state also changes to \"Warning\"")
 		Eventually(expectManifestStateIn(declarative.StateWarning), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
 	})
@@ -174,18 +179,20 @@ func emptySampleCR() *unstructured.Unstructured {
 	return res
 }
 
-func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) error {
-	err := k8sClient.Get(
-		ctx, client.ObjectKeyFromObject(cr),
-		cr,
-	)
-	if err != nil {
+func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) func() error {
+	return func() error {
+		err := k8sClient.Get(
+			ctx, client.ObjectKeyFromObject(cr),
+			cr,
+		)
+		if err != nil {
+			return err
+		}
+		unstructured.SetNestedMap(cr.Object, map[string]any{}, "status")
+		unstructured.SetNestedField(cr.Object, string(statusValue), "status", "state")
+		err = k8sClient.Status().Update(ctx, cr)
 		return err
 	}
-	unstructured.SetNestedMap(cr.Object, map[string]any{}, "status")
-	unstructured.SetNestedField(cr.Object, string(statusValue), "status", "state")
-	err = k8sClient.Status().Update(ctx, cr)
-	return err
 }
 
 func setDeploymentStatus(deploy *appsv1.Deployment) func() error {
