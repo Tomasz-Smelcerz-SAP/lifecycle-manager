@@ -9,11 +9,13 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/kyma-project/lifecycle-manager/api/v1beta2"
+	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	v2 "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -49,14 +51,14 @@ func (m mockLayer) DiffID() (v1.Hash, error) {
 	return v1.Hash{Algorithm: "fake", Hex: "diff id"}, nil
 }
 
-func CreateImageSpecLayer() v1.Layer {
-	layer, err := partial.UncompressedToLayer(mockLayer{filePath: "../../pkg/test_samples/oci/rendered.yaml"})
+func CreateImageSpecLayer(filePath string) v1.Layer {
+	layer, err := partial.UncompressedToLayer(mockLayer{filePath})
 	Expect(err).ToNot(HaveOccurred())
 	return layer
 }
 
-func PushToRemoteOCIRegistry(layerName string) {
-	layer := CreateImageSpecLayer()
+func PushToRemoteOCIRegistry(layerName, fileName string) v1.Hash {
+	layer := CreateImageSpecLayer(fileName)
 	digest, err := layer.Digest()
 	Expect(err).ToNot(HaveOccurred())
 
@@ -76,9 +78,11 @@ func PushToRemoteOCIRegistry(layerName string) {
 	gotHash, err := got.Digest()
 	Expect(err).ToNot(HaveOccurred())
 	Expect(gotHash).To(Equal(digest))
+
+	return digest
 }
 
-func createOCIImageSpec(name, repo string, enableCredSecretSelector bool) v1beta2.ImageSpec {
+func createOCIImageSpec(name, repo string, digest v1.Hash, enableCredSecretSelector bool) v1beta2.ImageSpec {
 	imageSpec := v1beta2.ImageSpec{
 		Name: name,
 		Repo: repo,
@@ -87,9 +91,6 @@ func createOCIImageSpec(name, repo string, enableCredSecretSelector bool) v1beta
 	if enableCredSecretSelector {
 		imageSpec.CredSecretSelector = CredSecretLabelSelector("test-secret-label")
 	}
-	layer := CreateImageSpecLayer()
-	digest, err := layer.Digest()
-	Expect(err).ToNot(HaveOccurred())
 	imageSpec.Ref = digest.String()
 	return imageSpec
 }
@@ -106,23 +107,47 @@ func NewTestManifest(prefix string) *v1beta2.Manifest {
 	}
 }
 
-func withInvalidInstallImageSpec(enableResource bool) func(manifest *v1beta2.Manifest) error {
+func withInvalidInstallImageSpec(imageDigest v1.Hash, enableResource bool) func(manifest *v1beta2.Manifest) error {
 	return func(manifest *v1beta2.Manifest) error {
-		invalidImageSpec := createOCIImageSpec("invalid-image-spec", "domain.invalid", false)
+		invalidImageSpec := createOCIImageSpec("invalid-image-spec", "domain.invalid", imageDigest, false)
 		imageSpecByte, err := json.Marshal(invalidImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 		return installManifest(manifest, imageSpecByte, enableResource)
 	}
 }
 
-func withValidInstallImageSpec(name string,
+func withValidInstallImageSpec(imageDigest v1.Hash, name string,
 	enableResource, enableCredSecretSelector bool,
 ) func(manifest *v1beta2.Manifest) error {
 	return func(manifest *v1beta2.Manifest) error {
-		validImageSpec := createOCIImageSpec(name, server.Listener.Addr().String(), enableCredSecretSelector)
+		validImageSpec := createOCIImageSpec(name, server.Listener.Addr().String(), imageDigest, enableCredSecretSelector)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 		return installManifest(manifest, imageSpecByte, enableResource)
+	}
+}
+
+func emptySampleCR(manifestName string) *unstructured.Unstructured {
+	res := &unstructured.Unstructured{}
+	res.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kyma-project.io", Version: "v1alpha1", Kind: "Sample"})
+	res.SetName("sample-cr-from-manifest" + "-" + manifestName)
+	res.SetNamespace(metav1.NamespaceDefault)
+	return res
+}
+
+func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) func() error {
+	return func() error {
+		err := k8sClient.Get(
+			ctx, client.ObjectKeyFromObject(cr),
+			cr,
+		)
+		if err != nil {
+			return err
+		}
+		unstructured.SetNestedMap(cr.Object, map[string]any{}, "status")
+		unstructured.SetNestedField(cr.Object, string(statusValue), "status", "state")
+		err = k8sClient.Status().Update(ctx, cr)
+		return err
 	}
 }
 
@@ -142,7 +167,7 @@ func installManifest(manifest *v1beta2.Manifest, installSpecByte []byte, enableR
 				"apiVersion": "operator.kyma-project.io/v1alpha1",
 				"kind":       "Sample",
 				"metadata": map[string]interface{}{
-					"name":      "sample-crd-from-manifest",
+					"name":      "sample-cr-from-manifest" + "-" + manifest.Name,
 					"namespace": metav1.NamespaceDefault,
 				},
 				"namespace": "default",

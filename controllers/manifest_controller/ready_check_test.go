@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	"github.com/kyma-project/lifecycle-manager/internal/manifest"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
@@ -16,7 +18,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -24,9 +25,11 @@ import (
 var _ = Describe("Manifest readiness check", Ordered, func() {
 	customDir := "custom-dir"
 	installName := filepath.Join(customDir, "installs")
+	deploymentName := "nginx-deployment"
+	var imageDigest v1.Hash
 	It(
 		"setup OCI", func() {
-			PushToRemoteOCIRegistry(installName)
+			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.yaml")
 		},
 	)
 	BeforeEach(
@@ -35,11 +38,18 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		},
 	)
 	It("Install OCI specs including an nginx deployment", func() {
-		testManifest := NewTestManifest("custom-check-oci")
+		testManifest := NewTestManifest("ready-check")
 		manifestName := testManifest.GetName()
-		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
+		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), imageDigest, false)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
+
+		fmt.Println("1111111111111111111111111111111111111111")
+		depl, err := listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("1111111111111111111111111111111111111111")
+
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
 
 		By("Verifying that the manifest is initially in the Processing state")
@@ -51,15 +61,15 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(status.Synced).To(HaveLen(2))
 
-		expectedDeployment := asResource("nginx-deployment", "default", "apps", "v1", "Deployment")
+		expectedDeployment := asResource(deploymentName, "default", "apps", "v1", "Deployment")
 		expectedCRD := asResource("samples.operator.kyma-project.io", "", "apiextensions.k8s.io", "v1", "CustomResourceDefinition")
 		Expect(status.Synced).To(ContainElement(expectedDeployment))
 		Expect(status.Synced).To(ContainElement(expectedCRD))
 
 		By("Verifying that deployment and Sample CR are deployed and ready")
 		deploy := &appsv1.Deployment{}
-		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
-		sampleCR := emptySampleCR()
+		Eventually(setDeploymentStatus(deploymentName, deploy), standardTimeout, standardInterval).Should(Succeed())
+		sampleCR := emptySampleCR(manifestName)
 		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
 
 		By("Preparing resources for the CR readiness check")
@@ -77,25 +87,57 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 		Expect(stateInfo.State).To(Equal(declarative.StateReady))
 
 		By("cleaning up the manifest")
+		fmt.Println("2222222222222222222222222222222222222222")
+		depl, err = listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("2222222222222222222222222222222222222222")
 		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
 		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
 		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeTrue())
 
 		Eventually(deleteManifestAndVerify(testManifest), standardTimeout, standardInterval).Should(Succeed())
 
+		fmt.Println("3333333333333333333333333333333333333333")
+		depl, err = listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("3333333333333333333333333333333333333333")
+
 		By("verify target resources got deleted")
 		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeFalse())
 		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
-		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
+		Eventually(
+			verifyObjectExistsDump(expectedDeployment.ToUnstructured())).
+			WithTimeout(standardTimeout).
+			WithPolling(standardInterval).
+			Should(BeFalse())
 	})
 })
+
+func listDeployments() ([]string, error) {
+	list := appsv1.DeploymentList{}
+	err := k8sClient.List(ctx, &list)
+
+	if err != nil {
+		return nil, err
+	}
+	res := []string{}
+	for _, dep := range list.Items {
+		res = append(res, dep.Name)
+	}
+	return res, nil
+}
 
 var _ = Describe("Manifest warning check", Ordered, func() {
 	customDir := "custom-dir"
 	installName := filepath.Join(customDir, "installs")
+	var imageDigest v1.Hash
+	deploymentName := "nginx-deployment-2"
+
 	It(
 		"setup OCI", func() {
-			PushToRemoteOCIRegistry(installName)
+			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.2.yaml")
 		},
 	)
 	BeforeEach(
@@ -105,35 +147,43 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 	)
 	It("Install OCI specs including an nginx deployment", func() {
 		By("Install test Manifest CR")
-		testManifest := NewTestManifest("custom-check-oci")
+		testManifest := NewTestManifest("warning-check")
 		manifestName := testManifest.GetName()
-		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
+		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), imageDigest, false)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
+
+		fmt.Println("8888888888888888888888888888888888888888")
+		depl, err := listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("8888888888888888888888888888888888888888")
+
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
+
+		time.Sleep(2 * time.Second)
+
+		fmt.Println("9999999999999999999999999999999999999999")
+		depl, err = listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("9999999999999999999999999999999999999999")
 
 		By("Ensure that deployment and Sample CR are deployed and ready")
 		deploy := &appsv1.Deployment{}
-		Eventually(setDeploymentStatus(deploy), standardTimeout, standardInterval).Should(Succeed())
-		sampleCR := emptySampleCR()
+		Eventually(setDeploymentStatus(deploymentName, deploy), standardTimeout, standardInterval).Should(Succeed())
+		sampleCR := emptySampleCR(manifestName)
 		Eventually(setCRStatus(sampleCR, declarative.StateReady), standardTimeout, standardInterval).Should(Succeed())
 
 		By("Verify the Manifest CR is in the \"Ready\" state")
 		Eventually(expectManifestStateIn(declarative.StateReady), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
 
-		/*
-			un2 := sampleCR.DeepCopy()
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(un2), un2)
-			Expect(err).To(BeNil())
-			dumpAsJson(">>", un2)
-		*/
-
 		By("Verify manifest status list all resources correctly")
 		status, err := getManifestStatus(manifestName)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(status.Synced).To(HaveLen(2))
-		expectedDeployment := asResource("nginx-deployment", "default", "apps", "v1", "Deployment")
+		expectedDeployment := asResource(deploymentName, "default", "apps", "v1", "Deployment")
 		expectedCRD := asResource("samples.operator.kyma-project.io", "", "apiextensions.k8s.io", "v1", "CustomResourceDefinition")
 		Expect(status.Synced).To(ContainElement(expectedDeployment))
 		Expect(status.Synced).To(ContainElement(expectedCRD))
@@ -144,10 +194,55 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		By("Verify the Manifest CR state also changes to \"Warning\"")
 		Eventually(expectManifestStateIn(declarative.StateWarning), standardTimeout, standardInterval).
 			WithArguments(manifestName).Should(Succeed())
+
+		By("cleaning up the manifest")
+		Eventually(verifyObjectExists(expectedDeployment.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
+		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeTrue())
+		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeTrue())
+
+		Eventually(deleteManifestAndVerify(testManifest), standardTimeout, standardInterval).Should(Succeed())
+
+		By("verify target resources got deleted")
+		Eventually(verifyObjectExists(sampleCR), standardTimeout, standardInterval).Should(BeFalse())
+		Eventually(verifyObjectExists(expectedCRD.ToUnstructured()), standardTimeout, standardInterval).Should(BeFalse())
+		Eventually(
+			verifyObjectExists(expectedDeployment.ToUnstructured())).
+			WithTimeout(standardTimeout).
+			WithPolling(standardInterval).
+			Should(BeFalse())
 	})
 })
 
+func verifyObjectExistsDump(obj *unstructured.Unstructured) func() (bool, error) {
+	return func() (bool, error) {
+		fmt.Println("1515151515151515151515151515151515151515")
+		depl, err := listDeployments()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println(depl)
+		fmt.Println("1515151515151515151515151515151515151515")
+
+		err = k8sClient.Get(
+			ctx, client.ObjectKeyFromObject(obj),
+			obj,
+		)
+
+		//fmt.Println("========================================")
+		//obj.Object["managedFields"] = nil
+		//dumpAsJson(" !!!!!!!!! ", obj.Object["metadata"])
+		//fmt.Println("========================================")
+
+		if err == nil {
+			return true, nil
+		} else if util.IsNotFound(err) {
+			return false, nil
+		}
+
+		return false, err
+	}
+}
+
 func verifyObjectExists(obj *unstructured.Unstructured) func() (bool, error) {
+
 	return func() (bool, error) {
 
 		err := k8sClient.Get(
@@ -172,36 +267,12 @@ func asResource(name, namespace, group, version, kind string) declarative.Resour
 	}
 }
 
-func emptySampleCR() *unstructured.Unstructured {
-	res := &unstructured.Unstructured{}
-	res.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kyma-project.io", Version: "v1alpha1", Kind: "Sample"})
-	res.SetName("sample-crd-from-manifest")
-	res.SetNamespace(metav1.NamespaceDefault)
-	return res
-}
-
-func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) func() error {
-	return func() error {
-		err := k8sClient.Get(
-			ctx, client.ObjectKeyFromObject(cr),
-			cr,
-		)
-		if err != nil {
-			return err
-		}
-		unstructured.SetNestedMap(cr.Object, map[string]any{}, "status")
-		unstructured.SetNestedField(cr.Object, string(statusValue), "status", "state")
-		err = k8sClient.Status().Update(ctx, cr)
-		return err
-	}
-}
-
-func setDeploymentStatus(deploy *appsv1.Deployment) func() error {
+func setDeploymentStatus(name string, deploy *appsv1.Deployment) func() error {
 	return func() error {
 		err := k8sClient.Get(
 			ctx, client.ObjectKey{
 				Namespace: metav1.NamespaceDefault,
-				Name:      "nginx-deployment",
+				Name:      name,
 			}, deploy,
 		)
 		if err != nil {
