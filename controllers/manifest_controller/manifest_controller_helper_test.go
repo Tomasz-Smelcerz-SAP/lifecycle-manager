@@ -51,14 +51,14 @@ func (m mockLayer) DiffID() (v1.Hash, error) {
 	return v1.Hash{Algorithm: "fake", Hex: "diff id"}, nil
 }
 
-func CreateImageSpecLayer(filePath string) v1.Layer {
-	layer, err := partial.UncompressedToLayer(mockLayer{filePath})
+func CreateImageSpecLayer() v1.Layer {
+	layer, err := partial.UncompressedToLayer(mockLayer{filePath: "../../pkg/test_samples/oci/rendered.yaml"})
 	Expect(err).ToNot(HaveOccurred())
 	return layer
 }
 
-func PushToRemoteOCIRegistry(layerName, fileName string) v1.Hash {
-	layer := CreateImageSpecLayer(fileName)
+func PushToRemoteOCIRegistry(layerName string) {
+	layer := CreateImageSpecLayer()
 	digest, err := layer.Digest()
 	Expect(err).ToNot(HaveOccurred())
 
@@ -78,11 +78,9 @@ func PushToRemoteOCIRegistry(layerName, fileName string) v1.Hash {
 	gotHash, err := got.Digest()
 	Expect(err).ToNot(HaveOccurred())
 	Expect(gotHash).To(Equal(digest))
-
-	return digest
 }
 
-func createOCIImageSpec(name, repo string, digest v1.Hash, enableCredSecretSelector bool) v1beta2.ImageSpec {
+func createOCIImageSpec(name, repo string, enableCredSecretSelector bool) v1beta2.ImageSpec {
 	imageSpec := v1beta2.ImageSpec{
 		Name: name,
 		Repo: repo,
@@ -91,6 +89,9 @@ func createOCIImageSpec(name, repo string, digest v1.Hash, enableCredSecretSelec
 	if enableCredSecretSelector {
 		imageSpec.CredSecretSelector = CredSecretLabelSelector("test-secret-label")
 	}
+	layer := CreateImageSpecLayer()
+	digest, err := layer.Digest()
+	Expect(err).ToNot(HaveOccurred())
 	imageSpec.Ref = digest.String()
 	return imageSpec
 }
