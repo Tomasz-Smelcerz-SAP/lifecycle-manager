@@ -108,20 +108,20 @@ func NewTestManifest(prefix string) *v1beta2.Manifest {
 	}
 }
 
-func withInvalidInstallImageSpec(imageDigest v1.Hash, enableResource bool) func(manifest *v1beta2.Manifest) error {
+func withInvalidInstallImageSpec(enableResource bool) func(manifest *v1beta2.Manifest) error {
 	return func(manifest *v1beta2.Manifest) error {
-		invalidImageSpec := createOCIImageSpec("invalid-image-spec", "domain.invalid", imageDigest, false)
+		invalidImageSpec := createOCIImageSpec("invalid-image-spec", "domain.invalid", false)
 		imageSpecByte, err := json.Marshal(invalidImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 		return installManifest(manifest, imageSpecByte, enableResource)
 	}
 }
 
-func withValidInstallImageSpec(imageDigest v1.Hash, name string,
+func withValidInstallImageSpec(name string,
 	enableResource, enableCredSecretSelector bool,
 ) func(manifest *v1beta2.Manifest) error {
 	return func(manifest *v1beta2.Manifest) error {
-		validImageSpec := createOCIImageSpec(name, server.Listener.Addr().String(), imageDigest, enableCredSecretSelector)
+		validImageSpec := createOCIImageSpec(name, server.Listener.Addr().String(), enableCredSecretSelector)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 		return installManifest(manifest, imageSpecByte, enableResource)

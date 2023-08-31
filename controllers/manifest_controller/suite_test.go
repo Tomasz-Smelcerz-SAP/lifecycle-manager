@@ -62,8 +62,8 @@ var (
 )
 
 const (
-	standardTimeout  = 30 * time.Second
-	standardInterval = 1000 * time.Millisecond
+	standardTimeout  = 15 * time.Second
+	standardInterval = 200 * time.Millisecond
 )
 
 func TestAPIs(t *testing.T) {

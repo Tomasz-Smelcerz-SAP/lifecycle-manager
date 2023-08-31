@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 	"github.com/kyma-project/lifecycle-manager/internal/manifest"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
@@ -25,10 +24,9 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 	customDir := "custom-dir"
 	installName := filepath.Join(customDir, "installs")
 	deploymentName := "nginx-deployment"
-	var imageDigest v1.Hash
 	It(
 		"setup OCI", func() {
-			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.yaml")
+			PushToRemoteOCIRegistry(installName)
 		},
 	)
 	BeforeEach(
@@ -39,7 +37,7 @@ var _ = Describe("Manifest readiness check", Ordered, func() {
 	It("Install OCI specs including an nginx deployment", func() {
 		testManifest := NewTestManifest("ready-check")
 		manifestName := testManifest.GetName()
-		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), imageDigest, false)
+		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -131,12 +129,11 @@ func listDeployments() ([]string, error) {
 var _ = Describe("Manifest warning check", Ordered, func() {
 	customDir := "custom-dir"
 	installName := filepath.Join(customDir, "installs")
-	var imageDigest v1.Hash
 	deploymentName := "nginx-deployment"
 
 	It(
 		"setup OCI", func() {
-			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.yaml")
+			PushToRemoteOCIRegistry(installName)
 		},
 	)
 	BeforeEach(
@@ -148,7 +145,7 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		By("Install test Manifest CR")
 		testManifest := NewTestManifest("warning-check")
 		manifestName := testManifest.GetName()
-		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), imageDigest, false)
+		validImageSpec := createOCIImageSpec(installName, server.Listener.Addr().String(), false)
 		imageSpecByte, err := json.Marshal(validImageSpec)
 		Expect(err).ToNot(HaveOccurred())
 
