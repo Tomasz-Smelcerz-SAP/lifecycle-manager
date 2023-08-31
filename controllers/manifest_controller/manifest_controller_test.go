@@ -2,6 +2,7 @@ package manifest_controller_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ var _ = Describe(
 		It(
 			"setup OCI", func() {
 				imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.yaml")
+				fmt.Println(imageDigest)
 			},
 		)
 		BeforeEach(

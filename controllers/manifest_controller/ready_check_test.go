@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	declarative "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
@@ -133,11 +132,11 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 	customDir := "custom-dir"
 	installName := filepath.Join(customDir, "installs")
 	var imageDigest v1.Hash
-	deploymentName := "nginx-deployment-2"
+	deploymentName := "nginx-deployment"
 
 	It(
 		"setup OCI", func() {
-			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.2.yaml")
+			imageDigest = PushToRemoteOCIRegistry(installName, "../../pkg/test_samples/oci/rendered.yaml")
 		},
 	)
 	BeforeEach(
@@ -160,8 +159,6 @@ var _ = Describe("Manifest warning check", Ordered, func() {
 		fmt.Println("8888888888888888888888888888888888888888")
 
 		Expect(installManifest(testManifest, imageSpecByte, true)).To(Succeed())
-
-		time.Sleep(2 * time.Second)
 
 		fmt.Println("9999999999999999999999999999999999999999")
 		depl, err = listDeployments()
