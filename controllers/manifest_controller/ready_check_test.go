@@ -121,7 +121,8 @@ func listDeployments() ([]string, error) {
 	}
 	res := []string{}
 	for _, dep := range list.Items {
-		res = append(res, dep.Name)
+		entry := dep.Name + "(" + dep.Status.Conditions[0].Reason + ")"
+		res = append(res, entry)
 	}
 	return res, nil
 }
@@ -259,6 +260,20 @@ func asResource(name, namespace, group, version, kind string) declarative.Resour
 		GroupVersionKind: metav1.GroupVersionKind{
 			Group: group, Version: version, Kind: kind},
 	}
+}
+
+func getDeployment(name string) (*appsv1.Deployment, error) {
+	res := &appsv1.Deployment{}
+	err := k8sClient.Get(
+		ctx, client.ObjectKey{
+			Namespace: metav1.NamespaceDefault,
+			Name:      name,
+		}, res,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func setDeploymentStatus(name string, deploy *appsv1.Deployment) func() error {

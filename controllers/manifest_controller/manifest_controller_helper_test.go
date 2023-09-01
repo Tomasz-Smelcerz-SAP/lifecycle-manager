@@ -136,6 +136,22 @@ func emptySampleCR(manifestName string) *unstructured.Unstructured {
 	return res
 }
 
+func getCR(name string) (*unstructured.Unstructured, error) {
+	res := &unstructured.Unstructured{}
+	res.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kyma-project.io", Version: "v1alpha1", Kind: "Sample"})
+	res.SetName(name)
+	res.SetNamespace(metav1.NamespaceDefault)
+
+	err := k8sClient.Get(
+		ctx, client.ObjectKeyFromObject(res),
+		res,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 func setCRStatus(cr *unstructured.Unstructured, statusValue declarative.State) func() error {
 	return func() error {
 		err := k8sClient.Get(
@@ -189,6 +205,20 @@ func expectManifestStateIn(state v2.State) func(manifestName string) error {
 		}
 		return nil
 	}
+}
+
+func getManifest(manifestName string) (*v1beta2.Manifest, error) {
+	manifest := &v1beta2.Manifest{}
+	err := k8sClient.Get(
+		ctx, client.ObjectKey{
+			Namespace: metav1.NamespaceDefault,
+			Name:      manifestName,
+		}, manifest,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return manifest, nil
 }
 
 func getManifestStatus(manifestName string) (v2.Status, error) {

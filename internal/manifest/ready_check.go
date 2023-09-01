@@ -96,6 +96,8 @@ func isDeploymentReady(clt declarative.Client, resources []*resource.Info) bool 
 	}
 	availableCond := deploymentutil.GetDeploymentCondition(deploy.Status, appsv1.DeploymentAvailable)
 	if availableCond != nil && availableCond.Status == corev1.ConditionTrue {
+		fmt.Println("PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!PADU!")
+		fmt.Println(deploy.GetName())
 		return true
 	}
 	if deploy.Spec.Replicas != nil && *deploy.Spec.Replicas == deploy.Status.ReadyReplicas {

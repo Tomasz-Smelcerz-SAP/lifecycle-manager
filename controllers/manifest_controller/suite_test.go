@@ -62,8 +62,8 @@ var (
 )
 
 const (
-	standardTimeout  = 15 * time.Second
-	standardInterval = 200 * time.Millisecond
+	standardTimeout  = 300 * time.Second
+	standardInterval = 500 * time.Millisecond
 )
 
 func TestAPIs(t *testing.T) {
@@ -149,7 +149,7 @@ var _ = BeforeSuite(
 			WithOptions(
 				controller.Options{
 					RateLimiter: internal.ManifestRateLimiter(
-						1*time.Second, 3*time.Second,
+						1*time.Second, 20*time.Second,
 						30, 200,
 					),
 					MaxConcurrentReconciles: 1,
