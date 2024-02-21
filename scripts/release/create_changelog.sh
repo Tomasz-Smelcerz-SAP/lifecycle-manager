@@ -7,6 +7,7 @@ set -o pipefail
 
 CURRENT_RELEASE_TAG=$1
 LAST_RELEASE_TAG=$2
+DOCKER_IMAGE_URL=$3
 
 GITHUB_URL=https://api.github.com/repos/${CODE_REPOSITORY}
 GITHUB_AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
@@ -21,5 +22,9 @@ do
 done
 
 echo -e "\n**Full changelog**: $GITHUB_URL/compare/${LAST_RELEASE_TAG}...${CURRENT_RELEASE_TAG}" >> ${CHANGELOG_FILE}
+
+echo "\n" >> ${CHANGELOG_FILE}
+echo "## Docker image URL" >> ${CHANGELOG_FILE}
+echo "${DOCKER_IMAGE_URL}" >> ${CHANGELOG_FILE}
 
 echo ${CHANGELOG_FILE}
