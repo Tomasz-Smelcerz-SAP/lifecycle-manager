@@ -23,7 +23,7 @@ done
 
 echo -e "\n**Full changelog**: $GITHUB_URL/compare/${LAST_RELEASE_TAG}...${CURRENT_RELEASE_TAG}" >> ${CHANGELOG_FILE}
 
-echo "\n" >> ${CHANGELOG_FILE}
+echo -e "\n" >> ${CHANGELOG_FILE}
 echo "## Docker image URL" >> ${CHANGELOG_FILE}
 echo "${DOCKER_IMAGE_URL}" >> ${CHANGELOG_FILE}
 
