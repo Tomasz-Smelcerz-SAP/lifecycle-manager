@@ -2,7 +2,7 @@ name: "Create release"
 
 env:
   IMAGE_REPO: europe-docker.pkg.dev/kyma-project/prod/lifecycle-manager
-  CODE_REPOSITORY: kyma-project/lifecycle-manager
+  CODE_REPOSITORY: Tomasz-Smelcerz-SAP/lifecycle-manager
 on:
   workflow_dispatch:
     inputs:
