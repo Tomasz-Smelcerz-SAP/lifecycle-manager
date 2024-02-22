@@ -13,7 +13,7 @@ on:
       commitHash:
         description: "full commit hash or branch name to tag"
         default: "main"
-        required: false
+        required: true
 jobs:
   validate-release:
     name: Validate release
