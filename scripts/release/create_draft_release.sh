@@ -7,18 +7,15 @@ set -o pipefail
 
 RELEASE_TAG=$1
 CHANGELOG_FILE_NAME=$2
-CHANGELOG_FILE=$(cat ${CHANGELOG_FILE_NAME})
+CHANGELOG_FILE=$(cat "${CHANGELOG_FILE_NAME}")
 
 GITHUB_URL=https://api.github.com/repos/${CODE_REPOSITORY}
 GITHUB_AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
 
-#echo "RELEASE_TAG: ${RELEASE_TAG}"
-#echo "CHANGELOG_FILE_NAME: ${CHANGELOG_FILE_NAME}"
-
 JSON_PAYLOAD=$(jq -n \
-  --arg tag_name "$RELEASE_TAG" \
-  --arg name "$RELEASE_TAG" \
-  --arg body "$CHANGELOG_FILE" \
+  --arg tag_name "${RELEASE_TAG}" \
+  --arg name "${RELEASE_TAG}" \
+  --arg body "${CHANGELOG_FILE}" \
   '{
     "tag_name": $tag_name,
     "name": $name,
@@ -34,7 +31,7 @@ CURL_RESPONSE=$(curl -L \
   -H "${GITHUB_AUTH_HEADER}" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "${GITHUB_URL}"/releases \
-  -d "$JSON_PAYLOAD")
+  -d "${JSON_PAYLOAD}")
 
 # return the id of the release draft
-echo "$CURL_RESPONSE" | jq -r ".id"
+echo "${CURL_RESPONSE}" | jq -r ".id"

@@ -19,5 +19,6 @@ CURL_RESPONSE=$(curl -L \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "${GITHUB_URL}"/releases/"${RELEASE_ID}" \
   -d '{"draft":false}')
-echo "$CURL_RESPONSE"
+
+echo "${CURL_RESPONSE}"
 

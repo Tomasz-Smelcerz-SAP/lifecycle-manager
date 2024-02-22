@@ -15,16 +15,17 @@ CHANGELOG_FILE="CHANGELOG.md"
 
 echo "## What has changed" >> ${CHANGELOG_FILE}
 
-git log ${LAST_RELEASE_TAG}..${CURRENT_RELEASE_TAG} --pretty=tformat:"%h" --reverse | while read -r commit
+git log "${LAST_RELEASE_TAG}".."${CURRENT_RELEASE_TAG}" --pretty=tformat:"%h" --reverse | while read -r commit
 do
     COMMIT_AUTHOR=$(curl -H "${GITHUB_AUTH_HEADER}" -sS "${GITHUB_URL}/commits/${commit}" | jq -r '.author.login')
-    git show -s ${commit} --format="* %s by @${COMMIT_AUTHOR}" >> ${CHANGELOG_FILE}
+    git show -s "${commit}" --format="* %s by @${COMMIT_AUTHOR}" >> ${CHANGELOG_FILE}
 done
 
-echo -e "\n**Full changelog**: $GITHUB_URL/compare/${LAST_RELEASE_TAG}...${CURRENT_RELEASE_TAG}" >> ${CHANGELOG_FILE}
-
-echo -e "\n" >> ${CHANGELOG_FILE}
-echo "## Docker image URL" >> ${CHANGELOG_FILE}
-echo "${DOCKER_IMAGE_URL}" >> ${CHANGELOG_FILE}
+{
+    echo -e "\n**Full changelog**: ${GITHUB_URL}/compare/${LAST_RELEASE_TAG}...${CURRENT_RELEASE_TAG}"
+    echo -e "\n"
+    echo "## Docker image URL"
+    echo "${DOCKER_IMAGE_URL}" 
+} >> ${CHANGELOG_FILE}
 
 echo ${CHANGELOG_FILE}
