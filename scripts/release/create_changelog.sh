@@ -10,7 +10,7 @@ LAST_RELEASE_TAG=$2
 DOCKER_IMAGE_URL=$3
 
 GITHUB_URL=https://api.github.com/repos/$CODE_REPOSITORY
-GITHUB_AUTH_HEADER="Authorization: token $GITHUB_TOKEN"
+GITHUB_AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
 CHANGELOG_FILE="CHANGELOG.md"
 
 echo "## What has changed" >> $CHANGELOG_FILE
