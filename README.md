@@ -60,3 +60,4 @@ To use Lifecycle Manager in a local setup, install the following:
 
 Go to the [`Table of Contents`](/docs/README.md) in the `/docs` directory to find the complete list of documents on Lifecycle Manager. Read those to learn more about Lifecycle Manager and its functionalities.
 
+## Skip this
