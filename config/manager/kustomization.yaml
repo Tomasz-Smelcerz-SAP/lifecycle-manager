@@ -16,4 +16,4 @@ configMapGenerator:
 images:
 - name: controller
   newName: tsmsap/lifecycle-manager
-  newTag: 22-32
+  newTag: 22-38

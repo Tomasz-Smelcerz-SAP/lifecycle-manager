@@ -234,7 +234,7 @@ func (m *SKRWebhookManifestManager) getUnstructuredResourcesConfig(ctx context.C
 
 	caBundleSecret := &apicorev1.Secret{}
 	caBundleObjKey := client.ObjectKey{
-		Namespace: "kcp-config",
+		Namespace: zerodw.KcpNamespace,
 		Name:      zerodw.CaBundleSecretName,
 	}
 

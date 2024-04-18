@@ -13,7 +13,7 @@ import (
 
 const (
 	CaBundleSecretName = "ca-bundle"
-	kcpNamespace       = "kcp-system"
+	KcpNamespace       = "kcp-system"
 	kcpRootSecretName  = "klm-watcher-root-secret"
 	istioNamespace     = "istio-system"
 )
@@ -117,7 +117,7 @@ func (cab *caBundleHandler) newEmptyCABundleSecret() *apicorev1.Secret {
 		},
 		ObjectMeta: apimetav1.ObjectMeta{
 			Name:      CaBundleSecretName,
-			Namespace: kcpNamespace,
+			Namespace: KcpNamespace,
 		},
 		Type: apicorev1.SecretTypeOpaque,
 		Data: map[string][]byte{},
@@ -128,7 +128,7 @@ func (cab *caBundleHandler) newEmptyCABundleSecret() *apicorev1.Secret {
 func (cab *caBundleHandler) FindCABundleSecret() (*apicorev1.Secret, error) {
 	return cab.findSecret(context.TODO(), client.ObjectKey{
 		Name:      CaBundleSecretName,
-		Namespace: kcpNamespace,
+		Namespace: KcpNamespace,
 	})
 }
 

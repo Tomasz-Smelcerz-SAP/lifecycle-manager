@@ -388,8 +388,10 @@ func (r *KymaReconciler) handleProcessingState(ctx context.Context, kyma *v1beta
 		})
 	}
 
+	logger.Info("foo")
 	if r.WatcherEnabled(kyma) {
 		errGroup.Go(func() error {
+			logger.Info("bar")
 			if err := r.SKRWebhookManager.Install(ctx, kyma); err != nil {
 				r.Metrics.RecordRequeueReason(metrics.SkrWebhookResourcesInstallation, queue.UnexpectedRequeue)
 				if errors.Is(err, &watcher.CertificateNotReadyError{}) {
