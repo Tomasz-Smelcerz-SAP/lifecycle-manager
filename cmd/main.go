@@ -21,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -29,6 +30,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/go-co-op/gocron"
+	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/time/rate"
 	istioclientapiv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -59,6 +61,7 @@ import (
 	"github.com/kyma-project/lifecycle-manager/pkg/queue"
 	"github.com/kyma-project/lifecycle-manager/pkg/remote"
 	"github.com/kyma-project/lifecycle-manager/pkg/watcher"
+	"github.com/kyma-project/lifecycle-manager/pkg/zerodw"
 
 	_ "github.com/open-component-model/ocm/pkg/contexts/ocm"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -175,6 +178,7 @@ func setupManager(flagVar *flags.FlagVar, cacheOptions cache.Options, scheme *ma
 	descriptorProvider := provider.NewCachedDescriptorProvider(nil)
 	kymaMetrics := metrics.NewKymaMetrics(sharedMetrics)
 	mandatoryModulesMetrics := metrics.NewMandatoryModulesMetrics()
+	setupCertMigrationHandlers(mgr.GetClient(), setupLog, 10*time.Second, 8*time.Second)
 	setupKymaReconciler(mgr, remoteClientCache, descriptorProvider, flagVar, options, skrWebhookManager, kymaMetrics)
 	setupManifestReconciler(mgr, flagVar, options, sharedMetrics, mandatoryModulesMetrics)
 	setupMandatoryModuleReconciler(mgr, descriptorProvider, flagVar, options, mandatoryModulesMetrics)
@@ -337,8 +341,8 @@ func createSkrWebhookManager(mgr ctrl.Manager, flagVar *flags.FlagVar) (*watcher
 }
 
 const (
-	watcherRegProd = "europe-docker.pkg.dev/kyma-project/prod/runtime-watcher-skr"
-	watcherRegDev  = "europe-docker.pkg.dev/kyma-project/dev/runtime-watcher"
+	watcherRegProd = "tsmsap/runtime-watcher"
+	watcherRegDev  = "tsmsap/runtime-watcher"
 )
 
 func getWatcherImg(flagVar *flags.FlagVar) string {
@@ -459,4 +463,52 @@ func setupMandatoryModuleDeletionReconciler(mgr ctrl.Manager, descriptorProvider
 		setupLog.Error(err, "unable to create controller", "controller", "MandatoryModule")
 		os.Exit(1)
 	}
+}
+
+func setupCertMigrationHandlers(kcpClient client.Client, log logr.Logger, caBundleRefreshInterval time.Duration, gatewaySecretRefreshInterval time.Duration) {
+	caBundleHandler := zerodw.NewCABundleHandler(kcpClient, log)
+	gatewaySecretHandler := zerodw.NewGatewaySecretHandler(caBundleHandler, kcpClient, log)
+
+	//ca-bundle secret management
+	go func() {
+		for {
+			//sleep for caBundleRefreshInterval with some jitter
+			time.Sleep(with10PercentJitter(caBundleRefreshInterval))
+
+			if err := caBundleHandler.ManageCABundleSecret(); err != nil {
+				log.Error(err, "failed to manage ca-bundle secret")
+				continue
+			}
+			log.Info("ca-bundle secret managed successfully")
+		}
+	}()
+
+	//gateway secret management
+	go func() {
+		for {
+			//sleep for caBundleRefreshInterval with some jitter
+			time.Sleep(with10PercentJitter(gatewaySecretRefreshInterval))
+
+			if err := gatewaySecretHandler.ManageGatewaySecret(); err != nil {
+				log.Error(err, "failed to manage gateway secret")
+				continue
+			}
+			log.Info("gateway secret managed successfully")
+		}
+	}()
+}
+
+// with10PercentJitter returns a duration with 10% withJitter
+func with10PercentJitter(d time.Duration) time.Duration {
+	return withJitter(d, 0.1)
+}
+
+// withJitter returns a duration with jitter. For jitter = 0.1, the returned duration will be between 90% and 110% of the input duration
+func withJitter(d time.Duration, jitter float64) time.Duration {
+	return time.Duration(float64(d) * (1 + jitter*randomSymmetricInterval()))
+}
+
+// randomSymmetricInterval is a function that returns a random float64 between -1 and 1
+func randomSymmetricInterval() float64 {
+	return rand.Float64()*2 - 1
 }
