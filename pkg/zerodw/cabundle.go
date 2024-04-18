@@ -3,6 +3,7 @@ package zerodw
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/go-logr/logr"
 	apicorev1 "k8s.io/api/core/v1"
@@ -51,8 +52,10 @@ func (cab *caBundleHandler) ManageCABundleSecret() error {
 }
 
 func (cab *caBundleHandler) handleNonExisting() error {
-	rootSecret, err := cab.findRootSecret()
+	rootSecret, err := cab.findKcpRootSecret()
 	if isNotFound(err) {
+		// root secret not found. Wait until it is created
+		cab.log.Error(RootSecretNotFound, "caBundleHandler")
 		return RootSecretNotFound
 	}
 
@@ -70,37 +73,35 @@ func (cab *caBundleHandler) handleNonExisting() error {
 	caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
 	//TODO: Just for testing, remove tls.crt
 	caBundle.Data["ca-bundle-1"] = rootSecret.Data["tls.crt"]
-	return cab.kcpClient.Create(context.TODO(), caBundle)
+
+	return cab.create(context.TODO(), caBundle)
 }
 
 func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
-	/*
-		rootSecret, err := cab.findRootSecret()
-		if isNotFound(err) {
-			return RootSecretNotFound
-		}
+	rootSecret, err := cab.findKcpRootSecret()
+	if isNotFound(err) {
+		cab.log.Error(RootSecretNotFound, "caBundleHandler")
+		// root secret not found. Wait until it is created
+		return RootSecretNotFound
+	}
+	if err != nil {
+		return err
+	}
 
+	lastModifiedAtValue, ok := caBundle.Annotations[lastModifiedAtAnnotation]
+	if ok {
+		caBundleSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
 		if err != nil {
 			return err
 		}
-	*/
-	return nil
-}
-
-// func newGatewaySecret creates a gateway Secret
-func (cab *caBundleHandler) newGatewaySecret() *apicorev1.Secret {
-	return &apicorev1.Secret{
-		TypeMeta: apimetav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: apicorev1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: apimetav1.ObjectMeta{
-			Name:      "gateway-secret",
-			Namespace: istioNamespace,
-		},
-		Type: apicorev1.SecretTypeOpaque,
-		Data: map[string][]byte{},
+		//TODO: Is CreationTimestamp change enough to detect a secret rotation?
+		//TODO: In the final solution we may just compare the hashes of data fields (tls.crt, tls.key) to their previous values stored in the caBundle secret
+		if rootSecret.CreationTimestamp.Time.After(caBundleSecretLastModifiedAt) {
+			cab.log.Info("Starting migration", "reason", "Root secret is more recent than the CA bundle secret")
+		}
 	}
+
+	return nil
 }
 
 // newEmptyCABundleSecret creates a CA bundle secret
@@ -127,16 +128,10 @@ func (cab *caBundleHandler) FindCABundleSecret() (*apicorev1.Secret, error) {
 	})
 }
 
-func (cab *caBundleHandler) findRootSecret() (*apicorev1.Secret, error) {
+// findKcpRootSecret finds the KCP root secret
+func (cab *caBundleHandler) findKcpRootSecret() (*apicorev1.Secret, error) {
 	return cab.findSecret(context.TODO(), client.ObjectKey{
 		Name:      kcpRootSecretName,
 		Namespace: istioNamespace,
 	})
-}
-
-func isNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	return client.IgnoreNotFound(err) == nil
 }

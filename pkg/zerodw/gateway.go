@@ -44,7 +44,7 @@ func (gsh *gatewaySecretHandler) ManageGatewaySecret() error {
 
 	if isNotFound(err) {
 		// ca-bundle secret does not exist, we can't configure gateway without it
-		gsh.log.Error(CABundleNotFound, "GatewaySecretHandler")
+		gsh.log.Error(CABundleNotFound, "gatewaySecretHandler")
 		return CABundleNotFound
 	}
 
@@ -65,7 +65,7 @@ func (gsh *gatewaySecretHandler) ManageGatewaySecret() error {
 func (gsh *gatewaySecretHandler) handleNonExisting(caBundle *apicorev1.Secret) error {
 	// create gateway secret
 	gwSecret := gsh.newGatewaySecret(caBundle)
-	err := gsh.create(gwSecret)
+	err := gsh.create(context.TODO(), gwSecret)
 	if err == nil {
 		gsh.log.Info("created the gateway secret", "reason", "gateway secret does not exist")
 	}
@@ -91,18 +91,13 @@ func (gsh *gatewaySecretHandler) handleExisting(caBundle *apicorev1.Secret, gwSe
 		gwSecret.Data["tls.crt"] = caBundle.Data["root.tls.crt"]
 		gwSecret.Data["tls.key"] = caBundle.Data["root.tls.key"]
 		gwSecret.Data["ca.crt"] = joinCACertsFromBundle(caBundle)
-		err := gsh.update(gwSecret)
+		err := gsh.update(context.TODO(), gwSecret)
 		if err == nil {
 			gsh.log.Info("updated the gateway secret", "reason", "CA-Bundle is more recent than the gateway secret")
 		}
 	}
 
 	return nil
-}
-
-func (gsh *gatewaySecretHandler) create(secret *apicorev1.Secret) error {
-	gsh.updateLastModifiedAt(secret)
-	return gsh.kcpClient.Create(context.TODO(), secret)
 }
 
 func (gsh *gatewaySecretHandler) findGatewaySecret() (*apicorev1.Secret, error) {
@@ -150,9 +145,4 @@ func joinCACertsFromBundle(caBundle *apicorev1.Secret) []byte {
 	}
 
 	return caCerts
-}
-
-func (gsh *gatewaySecretHandler) update(secret *apicorev1.Secret) error {
-	gsh.updateLastModifiedAt(secret)
-	return gsh.kcpClient.Update(context.TODO(), secret)
 }
