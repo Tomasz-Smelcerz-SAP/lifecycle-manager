@@ -21,6 +21,7 @@ import (
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
 	"github.com/kyma-project/lifecycle-manager/pkg/remote"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
+	"github.com/kyma-project/lifecycle-manager/pkg/zerodw"
 )
 
 // SKRWebhookManifestManager is a SKRWebhookManager implementation that applies
@@ -231,6 +232,19 @@ func (m *SKRWebhookManifestManager) getUnstructuredResourcesConfig(ctx context.C
 		return nil, fmt.Errorf("error fetching TLS secret: %w", err)
 	}
 
+	caBundleSecret := &apicorev1.Secret{}
+	caBundleObjKey := client.ObjectKey{
+		Namespace: "kcp-config",
+		Name:      zerodw.CaBundleSecretName,
+	}
+
+	if err := kcpClient.Get(ctx, caBundleObjKey, caBundleSecret); err != nil {
+		if util.IsNotFound(err) {
+			return nil, errors.New("CA bundle secret not found")
+		}
+		return nil, fmt.Errorf("error fetching CA bundle secret: %w", err)
+	}
+
 	return &unstructuredResourcesConfig{
 		contractVersion: version,
 		kcpAddress:      m.kcpAddr,
@@ -238,7 +252,7 @@ func (m *SKRWebhookManifestManager) getUnstructuredResourcesConfig(ctx context.C
 		cpuResLimit:     m.config.SkrWebhookCPULimits,
 		memResLimit:     m.config.SkrWebhookMemoryLimits,
 		skrWatcherImage: m.config.SkrWatcherImage,
-		caCert:          tlsSecret.Data[caCertKey],
+		caCert:          zerodw.JoinCACertsFromBundle(caBundleSecret),
 		tlsCert:         tlsSecret.Data[tlsCertKey],
 		tlsKey:          tlsSecret.Data[tlsPrivateKeyKey],
 		remoteNs:        remoteNs,

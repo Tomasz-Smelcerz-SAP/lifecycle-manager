@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	lastModifiedAtAnnotation = "lastModifiedAt"
+	LastModifiedAtAnnotation = "lastModifiedAt"
 )
 
 type secretManager struct {
@@ -53,5 +53,25 @@ func (sm *secretManager) updateLastModifiedAt(secret *apicorev1.Secret) {
 	if secret.Annotations == nil {
 		secret.Annotations = make(map[string]string)
 	}
-	secret.Annotations[lastModifiedAtAnnotation] = apimetav1.Now().Format(time.RFC3339)
+	secret.Annotations[LastModifiedAtAnnotation] = apimetav1.Now().Format(time.RFC3339)
+}
+
+// joinCACertsFromBundle joins the CA certs from keys in the caBundle named "ca-bundle-0", "ca-bundle-1", etc. There are at most 3 keys.
+func JoinCACertsFromBundle(caBundle *apicorev1.Secret) []byte {
+	caCerts := []byte{}
+
+	if cert, ok := caBundle.Data["ca-bundle-0"]; ok {
+		caCerts = append(caCerts, cert...)
+	}
+
+	if cert, ok := caBundle.Data["ca-bundle-1"]; ok {
+		caCerts = append(caCerts, cert...)
+	}
+
+	//TODO: Not really needed, or is it?
+	if cert, ok := caBundle.Data["ca-bundle-2"]; ok {
+		caCerts = append(caCerts, cert...)
+	}
+
+	return caCerts
 }

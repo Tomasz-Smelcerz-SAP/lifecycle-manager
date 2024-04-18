@@ -18,6 +18,7 @@ import (
 	"github.com/kyma-project/lifecycle-manager/api/v1beta2"
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
+	"github.com/kyma-project/lifecycle-manager/pkg/zerodw"
 )
 
 const (
@@ -213,6 +214,7 @@ func (c *CertificateManager) patchCertificate(ctx context.Context,
 		},
 	}
 
+	//NOTE: Why we patch this certificate on every reconcile? Wouldn't it be enough to patch it, say, every 5 minutes?
 	err = c.kcpClient.Patch(ctx, &cert, client.Apply, client.ForceOwnership, skrChartFieldOwner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch certificate: %w", err)
@@ -298,18 +300,55 @@ func (c *CertificateManager) GetCACertificateStatus(ctx context.Context) (certma
 }
 
 func (c *CertificateManager) RemoveSecretAfterCARotated(ctx context.Context, kymaObjKey client.ObjectKey) error {
-	caCertificateStatus, err := c.GetCACertificateStatus(ctx)
-	if err != nil {
-		return fmt.Errorf("error while fetching CA Certificate: %w", err)
-	}
+	/*
+		caCertificateStatus, err := c.GetCACertificateStatus(ctx)
+
+		if err != nil {
+			return fmt.Errorf("error while fetching CA Certificate: %w", err)
+		}
+	*/
+
+	fmt.Println("========================================")
+	fmt.Println("RemoveSecretAfterCARotated")
+	fmt.Println("========================================")
 
 	certSecret, err := c.getCertificateSecret(ctx)
 	if err != nil {
 		return fmt.Errorf("error while fetching certificate: %w", err)
 	}
 
-	if certSecret != nil && (certSecret.CreationTimestamp.Before(caCertificateStatus.NotBefore)) {
-		logf.FromContext(ctx).V(log.DebugLevel).Info("CA Certificate was rotated, removing certificate",
+	if certSecret != nil {
+
+		logf.FromContext(ctx).V(log.InfoLevel).Info("got certificate secret", "name", certSecret.Name)
+
+		gatewaySecret := &apicorev1.Secret{}
+		err := c.kcpClient.Get(ctx, client.ObjectKey{
+			Name:      "gateway-secret",
+			Namespace: "istio-system",
+		}, gatewaySecret)
+		if err != nil {
+			return fmt.Errorf("error while fetching gateway secret: %w", err)
+		}
+
+		//Only remove the watcher SKR secret if the gateway-secret was updated recently => you only need to "refresh" the watcher SKR secret if the istio gateway secret was updated.
+		removeSkrSecret := false
+		lastModifiedAtValue, ok := gatewaySecret.Annotations[zerodw.LastModifiedAtAnnotation]
+		if ok {
+			gatewaySecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
+			if err != nil {
+				logf.FromContext(ctx).V(log.InfoLevel).Error(err, "error while parsing lastModifiedAt annotation of the gateway-secret")
+			} else {
+				removeSkrSecret = gatewaySecretLastModifiedAt.After(certSecret.CreationTimestamp.Time)
+			}
+		}
+
+		logf.FromContext(ctx).V(log.InfoLevel).Info("secret removal decision:", "value", removeSkrSecret)
+
+		if !removeSkrSecret {
+			return nil
+		}
+
+		logf.FromContext(ctx).V(log.InfoLevel).Info("CA Certificate was rotated, removing certificate",
 			"kyma", kymaObjKey)
 		if err = c.removeSecret(ctx); err != nil {
 			return fmt.Errorf("error while removing certificate: %w", err)

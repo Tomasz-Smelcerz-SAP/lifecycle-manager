@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	caBundleSecretName = "ca-bundle"
+	CaBundleSecretName = "ca-bundle"
 	kcpNamespace       = "kcp-system"
 	kcpRootSecretName  = "klm-watcher-root-secret"
 	istioNamespace     = "istio-system"
@@ -72,9 +72,13 @@ func (cab *caBundleHandler) handleNonExisting() error {
 	//The "Data" field can't keep an array of values, so an integer key suffix is used to represent the array entries
 	caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
 	//TODO: Just for testing, remove tls.crt
-	caBundle.Data["ca-bundle-1"] = rootSecret.Data["tls.crt"]
+	//caBundle.Data["ca-bundle-1"] = rootSecret.Data["tls.crt"]
 
-	return cab.create(context.TODO(), caBundle)
+	err = cab.create(context.TODO(), caBundle)
+	if err == nil {
+		cab.log.Info("created the caBundle secret", "reason", "caBundle secret does not exist")
+	}
+	return err
 }
 
 func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
@@ -88,7 +92,7 @@ func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
 		return err
 	}
 
-	lastModifiedAtValue, ok := caBundle.Annotations[lastModifiedAtAnnotation]
+	lastModifiedAtValue, ok := caBundle.Annotations[LastModifiedAtAnnotation]
 	if ok {
 		caBundleSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
 		if err != nil {
@@ -112,7 +116,7 @@ func (cab *caBundleHandler) newEmptyCABundleSecret() *apicorev1.Secret {
 			APIVersion: apicorev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: apimetav1.ObjectMeta{
-			Name:      caBundleSecretName,
+			Name:      CaBundleSecretName,
 			Namespace: kcpNamespace,
 		},
 		Type: apicorev1.SecretTypeOpaque,
@@ -123,7 +127,7 @@ func (cab *caBundleHandler) newEmptyCABundleSecret() *apicorev1.Secret {
 // FindCABundleSecret finds the CA bundle secret
 func (cab *caBundleHandler) FindCABundleSecret() (*apicorev1.Secret, error) {
 	return cab.findSecret(context.TODO(), client.ObjectKey{
-		Name:      caBundleSecretName,
+		Name:      CaBundleSecretName,
 		Namespace: kcpNamespace,
 	})
 }

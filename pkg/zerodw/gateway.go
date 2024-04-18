@@ -77,7 +77,7 @@ func (gsh *gatewaySecretHandler) handleExisting(caBundle *apicorev1.Secret, gwSe
 	// skip the update only if the creation time of caBundle is older than the gateway Secret timestamp
 	doUpdate := true
 
-	lastModifiedAtValue, ok := gwSecret.Annotations[lastModifiedAtAnnotation]
+	lastModifiedAtValue, ok := gwSecret.Annotations[LastModifiedAtAnnotation]
 	if ok {
 		gwSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
 		if err == nil && caBundle.CreationTimestamp.Time.Before(gwSecretLastModifiedAt) {
@@ -90,7 +90,7 @@ func (gsh *gatewaySecretHandler) handleExisting(caBundle *apicorev1.Secret, gwSe
 		//create the log entry again that describes the reason for the Update
 		gwSecret.Data["tls.crt"] = caBundle.Data["root.tls.crt"]
 		gwSecret.Data["tls.key"] = caBundle.Data["root.tls.key"]
-		gwSecret.Data["ca.crt"] = joinCACertsFromBundle(caBundle)
+		gwSecret.Data["ca.crt"] = JoinCACertsFromBundle(caBundle)
 		err := gsh.update(context.TODO(), gwSecret)
 		if err == nil {
 			gsh.log.Info("updated the gateway secret", "reason", "CA-Bundle is more recent than the gateway secret")
@@ -121,28 +121,8 @@ func (gsh *gatewaySecretHandler) newGatewaySecret(caBundle *apicorev1.Secret) *a
 		Data: map[string][]byte{
 			"tls.crt": caBundle.Data["root.tls.crt"],
 			"tls.key": caBundle.Data["root.tls.key"],
-			"ca.crt":  joinCACertsFromBundle(caBundle),
+			"ca.crt":  JoinCACertsFromBundle(caBundle),
 		},
 	}
 	return gwSecret
-}
-
-// joinCACertsFromBundle joins the CA certs from keys in the caBundle named "ca-bundle-0", "ca-bundle-1", etc. There are at most 3 keys.
-func joinCACertsFromBundle(caBundle *apicorev1.Secret) []byte {
-	caCerts := []byte{}
-
-	if cert, ok := caBundle.Data["ca-bundle-0"]; ok {
-		caCerts = append(caCerts, cert...)
-	}
-
-	if cert, ok := caBundle.Data["ca-bundle-1"]; ok {
-		caCerts = append(caCerts, cert...)
-	}
-
-	//TODO: Not really needed, or is it?
-	if cert, ok := caBundle.Data["ca-bundle-2"]; ok {
-		caCerts = append(caCerts, cert...)
-	}
-
-	return caCerts
 }
