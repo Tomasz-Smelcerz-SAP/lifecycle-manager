@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	LastModifiedAtAnnotation = "lastModifiedAt"
+	LastModifiedAtAnnotation   = "lastModifiedAt"
+	MigrationPendingAnnotation = "migrationPending"
+	AllClientsMigrated         = "allClientsMigrated"
 )
 
 type secretManager struct {

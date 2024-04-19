@@ -92,6 +92,24 @@ func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
 		return err
 	}
 
+	//Is the migration already done?
+	//TODO: Replace with a proper mechanism once it's determined how to reliably tell if all the clients are migrated...
+	allClientsMigrated, ok := caBundle.Annotations[AllClientsMigrated]
+	if ok && allClientsMigrated == "true" {
+		cab.log.Info("Finishing migration", "reason", "all clients are migrated")
+		delete(caBundle.Data, "ca-bundle-0") //it should be the same as rootSecret.Data["ca.crt"]. We could leave it but it's more safer to explicitly re-assign
+		delete(caBundle.Data, "ca-bundle-1")
+		delete(caBundle.Annotations, MigrationPendingAnnotation)
+		delete(caBundle.Annotations, AllClientsMigrated)
+
+		caBundle.Data["root.tls.crt"] = rootSecret.Data["tls.crt"]
+		caBundle.Data["root.tls.key"] = rootSecret.Data["tls.key"]
+		caBundle.Data["root.ca.crt"] = rootSecret.Data["ca.crt"]
+		caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
+
+		return cab.update(context.TODO(), caBundle)
+	}
+
 	lastModifiedAtValue, ok := caBundle.Annotations[LastModifiedAtAnnotation]
 	if ok {
 		caBundleSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
@@ -99,9 +117,13 @@ func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
 			return err
 		}
 		//TODO: Is CreationTimestamp change enough to detect a secret rotation?
-		//TODO: In the final solution we may just compare the hashes of data fields (tls.crt, tls.key) to their previous values stored in the caBundle secret
+		//TODO: Maybe we should in addition compare the secret data to detect if the certificate keys really changed
 		if rootSecret.CreationTimestamp.Time.After(caBundleSecretLastModifiedAt) {
 			cab.log.Info("Starting migration", "reason", "Root secret is more recent than the CA bundle secret")
+			caBundle.Data["ca-bundle-1"] = caBundle.Data["ca-bundle-0"]
+			caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
+			caBundle.Annotations[MigrationPendingAnnotation] = "true"
+			return cab.update(context.TODO(), caBundle)
 		}
 	}
 

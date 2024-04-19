@@ -308,10 +308,6 @@ func (c *CertificateManager) RemoveSecretAfterCARotated(ctx context.Context, kym
 		}
 	*/
 
-	fmt.Println("========================================")
-	fmt.Println("RemoveSecretAfterCARotated")
-	fmt.Println("========================================")
-
 	certSecret, err := c.getCertificateSecret(ctx)
 	if err != nil {
 		return fmt.Errorf("error while fetching certificate: %w", err)

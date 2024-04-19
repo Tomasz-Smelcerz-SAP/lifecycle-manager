@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	DefaultKymaRequeueSuccessInterval                                   = 30 * time.Second
+	DefaultKymaRequeueSuccessInterval                                   = 15 * time.Second
 	DefaultKymaRequeueErrInterval                                       = 2 * time.Second
-	DefaultKymaRequeueWarningInterval                                   = 30 * time.Second
+	DefaultKymaRequeueWarningInterval                                   = 15 * time.Second
 	DefaultKymaRequeueBusyInterval                                      = 5 * time.Second
-	DefaultManifestRequeueSuccessInterval                               = 30 * time.Second
-	DefaultMandatoryModuleRequeueSuccessInterval                        = 30 * time.Second
-	DefaultMandatoryModuleDeletionRequeueSuccessInterval                = 30 * time.Second
-	DefaultWatcherRequeueSuccessInterval                                = 30 * time.Second
+	DefaultManifestRequeueSuccessInterval                               = 15 * time.Second
+	DefaultMandatoryModuleRequeueSuccessInterval                        = 15 * time.Second
+	DefaultMandatoryModuleDeletionRequeueSuccessInterval                = 15 * time.Second
+	DefaultWatcherRequeueSuccessInterval                                = 15 * time.Second
 	DefaultClientQPS                                                    = 300
 	DefaultClientBurst                                                  = 600
 	DefaultPprofServerTimeout                                           = 90 * time.Second
@@ -26,7 +26,7 @@ const (
 	RateLimiterFrequencyDefault                                         = 30
 	FailureBaseDelayDefault                                             = 100 * time.Millisecond
 	FailureMaxDelayDefault                                              = 5 * time.Second
-	DefaultCacheSyncTimeout                                             = 2 * time.Minute
+	DefaultCacheSyncTimeout                                             = 20 * time.Second
 	DefaultLogLevel                                                     = log.WarnLevel
 	DefaultPurgeFinalizerTimeout                                        = 5 * time.Minute
 	DefaultMaxConcurrentManifestReconciles                              = 1

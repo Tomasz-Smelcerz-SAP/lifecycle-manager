@@ -48,7 +48,7 @@ func (gsh *gatewaySecretHandler) ManageGatewaySecret() error {
 		return CABundleNotFound
 	}
 
-	secret, err := gsh.findGatewaySecret()
+	gwSecret, err := gsh.findGatewaySecret()
 
 	if isNotFound(err) {
 		// gateway secret does not exist
@@ -59,7 +59,7 @@ func (gsh *gatewaySecretHandler) ManageGatewaySecret() error {
 	}
 
 	// gateway secret exists
-	return gsh.handleExisting(caBundle, secret)
+	return gsh.handleExisting(caBundle, gwSecret)
 }
 
 func (gsh *gatewaySecretHandler) handleNonExisting(caBundle *apicorev1.Secret) error {
@@ -77,10 +77,22 @@ func (gsh *gatewaySecretHandler) handleExisting(caBundle *apicorev1.Secret, gwSe
 	// skip the update only if the creation time of caBundle is older than the gateway Secret timestamp
 	doUpdate := true
 
-	lastModifiedAtValue, ok := gwSecret.Annotations[LastModifiedAtAnnotation]
+	var caBundleLastModifiedAt time.Time
+	var err error
+
+	caBundleLastModifiedAtValue, ok := caBundle.Annotations[LastModifiedAtAnnotation]
 	if ok {
-		gwSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
-		if err == nil && caBundle.CreationTimestamp.Time.Before(gwSecretLastModifiedAt) {
+		caBundleLastModifiedAt, err = time.Parse(time.RFC3339, caBundleLastModifiedAtValue)
+		if err != nil {
+			gsh.log.Error(err, "failed to parse the last modified time of the CA bundle")
+			return err
+		}
+	}
+
+	gwSecretlastModifiedAtValue, ok := gwSecret.Annotations[LastModifiedAtAnnotation]
+	if ok {
+		gwSecretLastModifiedAt, err := time.Parse(time.RFC3339, gwSecretlastModifiedAtValue)
+		if err == nil && caBundleLastModifiedAt.Before(gwSecretLastModifiedAt) {
 			doUpdate = false
 		}
 	}
