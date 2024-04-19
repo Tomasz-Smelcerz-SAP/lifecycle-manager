@@ -20,6 +20,7 @@ const (
 
 var (
 	RootSecretNotFound = errors.New("Root secret not found")
+	annotationNotFound = errors.New("lastModifiedAt annotation not found")
 )
 
 type caBundleHandler struct {
@@ -110,21 +111,25 @@ func (cab *caBundleHandler) handleExisting(caBundle *apicorev1.Secret) error {
 		return cab.update(context.TODO(), caBundle)
 	}
 
-	lastModifiedAtValue, ok := caBundle.Annotations[LastModifiedAtAnnotation]
-	if ok {
-		caBundleSecretLastModifiedAt, err := time.Parse(time.RFC3339, lastModifiedAtValue)
-		if err != nil {
-			return err
-		}
-		//TODO: Is CreationTimestamp change enough to detect a secret rotation?
-		//TODO: Maybe we should in addition compare the secret data to detect if the certificate keys really changed
-		if rootSecret.CreationTimestamp.Time.After(caBundleSecretLastModifiedAt) {
-			cab.log.Info("Starting migration", "reason", "Root secret is more recent than the CA bundle secret")
-			caBundle.Data["ca-bundle-1"] = caBundle.Data["ca-bundle-0"]
-			caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
-			caBundle.Annotations[MigrationPendingAnnotation] = "true"
-			return cab.update(context.TODO(), caBundle)
-		}
+	//Should we start the migration?
+	annVal, ok := caBundle.Annotations[LastModifiedAtAnnotation]
+	if !ok {
+		cab.log.Error(annotationNotFound, "caBundleHandler")
+		return annotationNotFound
+	}
+
+	caBundleSecretLastModifiedTime, err := time.Parse(time.RFC3339, annVal)
+	if err != nil {
+		return err
+	}
+	//TODO: Is CreationTimestamp change enough to detect a secret rotation?
+	//TODO: Maybe we should in addition compare the secret data to detect if the certificate keys really changed
+	if rootSecret.CreationTimestamp.Time.After(caBundleSecretLastModifiedTime) {
+		cab.log.Info("Starting migration", "reason", "Root secret is more recent than the CA bundle secret")
+		caBundle.Data["ca-bundle-1"] = caBundle.Data["ca-bundle-0"]
+		caBundle.Data["ca-bundle-0"] = rootSecret.Data["ca.crt"]
+		caBundle.Annotations[MigrationPendingAnnotation] = "true"
+		return cab.update(context.TODO(), caBundle)
 	}
 
 	return nil
