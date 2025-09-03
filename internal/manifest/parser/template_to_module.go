@@ -14,6 +14,7 @@ import (
 
 	"github.com/kyma-project/lifecycle-manager/api/shared"
 	"github.com/kyma-project/lifecycle-manager/api/v1beta2"
+	"github.com/kyma-project/lifecycle-manager/auto"
 	"github.com/kyma-project/lifecycle-manager/internal/descriptor/provider"
 	"github.com/kyma-project/lifecycle-manager/internal/descriptor/types"
 	"github.com/kyma-project/lifecycle-manager/internal/manifest/img"
@@ -22,10 +23,7 @@ import (
 	"github.com/kyma-project/lifecycle-manager/pkg/templatelookup"
 )
 
-var (
-	ErrConvertingToOCIAccessSpec = errors.New("failed converting resource.AccessSpec to *ociartifact.AccessSpec")
-	foo                          int //nolint:unused,gochecknoglobals // used in examples below
-)
+var ErrConvertingToOCIAccessSpec = errors.New("failed converting resource.AccessSpec to *ociartifact.AccessSpec")
 
 type Parser struct {
 	client.Client
@@ -172,56 +170,16 @@ func (p *Parser) newManifestFromTemplate(
 		return nil, fmt.Errorf("failed to get descriptor from template: %w", err)
 	}
 
-	// Correct code
 	if layers, err = img.Parse(descriptor.ComponentDescriptor); err != nil {
-		return nil, fmt.Errorf("could not parse descriptor: %w", err)
-	}
-
-	// [DETECTED] Problem 1: no wrapping
-	if layers2, err := img.Parse(descriptor.ComponentDescriptor); err != nil {
-		foo = len(layers2)
-		return nil, err // fmt.Errorf("could not parse descriptor: %w", err)
-	}
-
-	// [DETECTED] Problem 2: ignoring the error
-	layers3, _ := img.Parse(descriptor.ComponentDescriptor)
-	if len(layers3) == 0 {
-		panic("foo")
-	}
-
-	// [DETECTED] Problem 3: error is checked but "swallowed"
-	layers4, err := img.Parse(descriptor.ComponentDescriptor)
-	if err != nil {
-		dummyManifest := &v1beta2.Manifest{
-			Spec: v1beta2.ManifestSpec{
-				Remote: len(layers4) == 0,
-			},
-		}
-		return dummyManifest, nil
-	}
-
-	// [NOT DETECTED] Problem 4: error is checked but swallowed in some cases
-	layers5, err := img.Parse(descriptor.ComponentDescriptor)
-	if err != nil {
-		if len(layers5) > 0 {
-			dummyManifest := &v1beta2.Manifest{
-				Spec: v1beta2.ManifestSpec{
-					Remote: true,
-				},
-			}
-			// swallowed error
-			return dummyManifest, nil
-		}
-		// Proper return
-		return nil, fmt.Errorf("could not parse descriptor: %w", err)
+		return nil, auto.Wrap(err)
 	}
 
 	if err := translateLayersAndMergeIntoManifest(manifest, layers); err != nil {
-		return nil, fmt.Errorf("could not translate layers and merge them: %w", err)
+		return nil, auto.Wrap(err)
 	}
 
 	if err := appendOptionalCustomStateCheck(manifest, template.Spec.CustomStateCheck); err != nil {
-		return nil, fmt.Errorf("could not translate custom state check: %w", err)
+		return nil, auto.Wrap(err)
 	}
 	manifest.Spec.Version = descriptor.Version
 	if localizedImages := getLocalizedImagesFromDescriptor(descriptor); len(localizedImages) > 0 {

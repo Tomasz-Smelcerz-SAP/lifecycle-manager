@@ -1,0 +1,113 @@
+export MYDIR=$PWD
+
+pushd internal/manifest/parser; $MYDIR/bin/golangci-lint run --verbose -c $MYDIR/.golangci.yaml; popd\n
+
+nvim internal/manifest/parser/template_to_module.go
+
+
+
+"Program testing can be used to show the presence of bugs, but never to show their absence" — Edsger W. Dijkstra
+
+
+01) today I want to talk about this little function: newManifestFromTemplate()
+
+
+02) we all contributed to it, so it's not about blaming anyone in particular
+
+
+03) Much of the code we're writing look like this:
+    - some assertions/validations at the beginning
+    - major "business-related" action with proper error handling
+    - the mentioned error handling is the part of our business logic and should be tested
+    - the rest (lines 173-183) are some necessary, additional steps to finish the job
+    - my point is:
+
+
+04) Providing a test that specifcally targets errors from these steps is not only unnecessary,
+    it is harmful!
+    That's why trying to get 100% test coverage - with respect to these code paths - is also a bad idea.
+    I will spend the next 10 minutes explaining why.
+
+
+05) Explanation:
+    - Take a look at lines: 173 - 183. We can see some idiomatic Go error handling there.
+    - If we were programming in a language with exceptions, we wouldn't even see these lines at all:
+      These errors would just invisibly bubble up to the caller (think of Java's RuntimeException)
+    - If we were programming in language like Zig, we also wouldn't see these lines:
+      Zig has built-in support for error propagation with the `try` keyword.
+      So there would be NOTHING TO COVER with a test here.
+    - The fact that we have to explicitly handle these errors is ONLY a consequence of Go's design,
+      and the current convention of how we handle errors in Go.
+    - It's only a boilerplate that we have to write because Go doesn't have exceptions or
+      something like Zig's `try`.
+    - We don't have any idea what to do with these errors
+      and our only responsibility seems to be passing them up the call stack
+
+06) Now remember why we write tests in the first place:
+    - We write tests primarily to verify correctness of our code:
+    - To verify that our code works as intended
+    - More precisely: To reduce the "area of incorrectness" by providing the evidence
+      that our code works for specifc cases and inputs.
+
+07) Correctness of our programs (in Go), with respect to errors, requires us to the following:
+    - Explicitly handle errors we're interested in. This is no different from any other language.
+    - Manually propagate errors we're not really interested in up the call stack.
+      I say most of the errors we're dealing with in Go are of this kind.
+
+08) So, if passing up errors is our responqsibility, then we should be testing it, right?
+    - Not necessarily! Because testing, as I already mentioned in my other presentations,
+      is just one of the techniques we can use to verify correctness of the code.
+    - We can also PROVE (well, not quite yet - more on that in a moment) that our code behaves correctly.
+      If we do so, no testing is necessary: You don't test PROVEN things.
+    - Take for example Pythagorean theorem: We don't test it numerically, right?
+      Of course apart from primary school where we're given just a few numerical examples
+      to get familiar with the idea.
+      But once we're exposed to the proof, we aren't going to test it anymore in our lifes. NEVER.
+    - In programming world we rarely depend on formal proofs like that (at least at this moment),
+      and we rather ASSERT things.
+      For example: We don't test (in our business code) that floating-point rounding works correctly.
+      We ASSERT that it does, because we trust that the FPU (and compiler, and standard library)
+      is implemented correctly. Likewise, we don't test things verified by the compiler,
+      or even the correctness of external libraries we use.
+
+09) Can we then prove, or at least "assert" that our error handling code is correct?
+    - With respect to passing up "boilerplate" errors, the answer is: Yes, we can.
+    - In theory the compiler could be used for that purpose, after all it already asserts many thigs
+      with respect to our code, like, for example:
+      that a string will never be returned from a function that we declared as returning just an integer.
+    - Unfortunately, Go compiler doesn't check that we correctly propagate errors.
+    - But we can use linters.
+    - Linters are tools that analyze our code and assert certain properties about it.
+    - And there are linters that can check that we correctly propagate errors.
+
+10) You may have some question now:
+    - Can we really use linters for our purpose? My answer is: I'll demo that in a moment.
+    - Assuming we CAN, what's better about linters than tests?
+
+11) Why linting is better than testing in this case:
+    - Tests consume resources: The most expensive one is YOUR TIME.
+      Time spent on writing linters is also precious, but someone else paid for it already.
+    - You can make an error in a test and you have to maintain it once it's written.
+      Again, same goes for linters, but someone else pays for that!
+    - There is a value in a test that is NOT WRITTEN.
+      You see: the presence of a test gives the reader an important information:
+      That tested piece of code is important and deserves special attention. This code is
+      relevant to the business logic.
+      In the same manner, the absence of a test also gives the reader an important information:
+      - Either this piece of code is tested in some other way (e2e tests, integration tests, etc)
+      - Or this piece of code is NOT important, it's just boilerplate and we have some systematic way
+        of verifying its correctness (like linters in our case).
+    - So, in my opinion, every bit of information counts: Not only test names are important,
+      not only test code is important, but also the absence of tests - in some cases - is important,
+      as it can be used as a tool to communicate some important informations
+      about the code to the reader.
+
+12) And this is why I believe we should NOT write tests for error handling boilerplate code like
+error handling in lines 173-183.
+
+
+Demo time!
+During the demo I will:
+- Show that the linters can be used for our purpose
+- Show one additional technique to explicitly mark certain errors as "not interesting", "bolilerplate"
+  while still propagating them up the call stack and ensuring proper wrapping, but with less effort.
