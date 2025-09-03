@@ -23,6 +23,11 @@ linters:
       replace-allow-list:
         - github.com/kyma-project/lifecycle-manager/api
       replace-local: true
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      check-constant: true
+      check-named-result: true
     importas:
       alias:
         - pkg: github.com/kyma-project/template-operator/api/v1alpha1
@@ -179,7 +184,6 @@ linters:
     wrapcheck:
       ignore-package-globs:
         - github.com/kyma-project/lifecycle-manager/pkg/*
-        - github.com/kyma-project/lifecycle-manager/internal/*
   exclusions:
     generated: lax
     presets:
