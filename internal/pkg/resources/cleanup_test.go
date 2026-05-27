@@ -165,7 +165,8 @@ func Test_SplitResources(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			actualOperatorRelatedResources, actualOperatorManagedResources := resources.SplitResources(testCase.resources)
+			actualOperatorRelatedResources, actualOperatorManagedResources := resources.SplitResources(
+				testCase.resources)
 
 			if !reflect.DeepEqual(actualOperatorRelatedResources, testCase.operatorRelatedResources) {
 				t.Errorf("SplitResources() actualOperatorRelatedResources = %v, want %v",
