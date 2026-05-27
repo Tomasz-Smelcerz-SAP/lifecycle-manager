@@ -42,13 +42,13 @@ func (r ResourceList) contains(obj client.Object) bool {
 }
 
 // isMatchingObject returns true if objects match on Name, Namespace and Kind.
-func isMatchingObject(a, b client.Object) bool {
-	if a == nil || b == nil {
+func isMatchingObject(first, second client.Object) bool {
+	if first == nil || second == nil {
 		return false
 	}
-	return a.GetName() == b.GetName() &&
-		a.GetNamespace() == b.GetNamespace() &&
-		getKind(a.GetObjectKind()) == getKind(b.GetObjectKind())
+	return first.GetName() == second.GetName() &&
+		first.GetNamespace() == second.GetNamespace() &&
+		getKind(first.GetObjectKind()) == getKind(second.GetObjectKind())
 }
 
 func getKind(obknd schema.ObjectKind) string {
