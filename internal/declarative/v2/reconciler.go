@@ -549,37 +549,35 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 	}
 
 	result := make([]client.Object, 0, len(targetResources.Items))
-	for _, obj := range targetResources.Items {
-		result = append(result, obj)
+	for _, unstrObj := range targetResources.Items {
+		err := normaliseNamespace(unstrObj, apimetav1.NamespaceDefault, skrClient)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to normalise namespace for object %s/%s of kind %s: %w",
+				unstrObj.GetNamespace(), unstrObj.GetName(), unstrObj.GetKind(), err)
+		}
+		result = append(result, client.Object(unstrObj)) // Unstructured is a client.Object
 	}
-	normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
 	return result, nil
 }
 
-// normaliseNamespaces is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
-func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClient skrclient.Client) {
-	for _, obj := range objs {
-		unstructuredObj, ok := obj.(*unstructured.Unstructured)
-		if !ok {
-			continue
+// normaliseNamespace is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
+func normaliseNamespace(obj *unstructured.Unstructured, defaultNamespace string, skrClient skrclient.Client) error {
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	namespaced, err := isNamespaced(gvk, skrClient)
+	if err != nil {
+		return err
+	}
+	if namespaced {
+		if obj.GetNamespace() == "" {
+			obj.SetNamespace(defaultNamespace)
 		}
-		gvk := obj.GetObjectKind().GroupVersionKind()
-		namespaced, err := isNamespaced(gvk, skrClient)
-		if err != nil {
-			continue
-		}
-		if namespaced {
-			if obj.GetNamespace() == "" {
-				obj.SetNamespace(defaultNamespace)
-				unstructuredObj.SetNamespace(defaultNamespace)
-			}
-		} else {
-			if obj.GetNamespace() != "" {
-				obj.SetNamespace("")
-				unstructuredObj.SetNamespace("")
-			}
+	} else {
+		if obj.GetNamespace() != "" {
+			obj.SetNamespace("")
 		}
 	}
+	return nil
 }
 
 func isNamespaced(gvk schema.GroupVersionKind, skrClient skrclient.Client) (bool, error) {
