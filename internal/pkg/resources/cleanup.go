@@ -26,7 +26,7 @@ func NewConcurrentCleanup(clnt client.Client, manifest *v1beta2.Manifest) *Concu
 	}
 }
 
-func (c *ConcurrentCleanup) DeleteDiffResources(ctx context.Context, resources []client.Object) error {
+func (c *ConcurrentCleanup) DeleteDiffResources(ctx context.Context, resources []shared.Resource) error {
 	status := c.manifest.GetStatus()
 	operatorRelatedResources, operatorManagedResources := SplitResources(resources)
 	if err := c.cleanupResources(ctx, operatorManagedResources, status); err != nil {
@@ -35,16 +35,16 @@ func (c *ConcurrentCleanup) DeleteDiffResources(ctx context.Context, resources [
 	return c.cleanupResources(ctx, operatorRelatedResources, status)
 }
 
-func SplitResources(resources []client.Object) ([]client.Object, []client.Object) {
-	operatorRelatedResources := make([]client.Object, 0)
-	operatorManagedResources := make([]client.Object, 0)
+func SplitResources(resources []shared.Resource) ([]shared.Resource, []shared.Resource) {
+	operatorRelatedResources := make([]shared.Resource, 0)
+	operatorManagedResources := make([]shared.Resource, 0)
 
-	for _, obj := range resources {
-		if IsOperatorRelatedResources(obj.GetObjectKind().GroupVersionKind().Kind) {
-			operatorRelatedResources = append(operatorRelatedResources, obj)
+	for _, res := range resources {
+		if IsOperatorRelatedResources(res.Kind) {
+			operatorRelatedResources = append(operatorRelatedResources, res)
 			continue
 		}
-		operatorManagedResources = append(operatorManagedResources, obj)
+		operatorManagedResources = append(operatorManagedResources, res)
 	}
 
 	return operatorRelatedResources, operatorManagedResources
@@ -62,18 +62,18 @@ func IsOperatorRelatedResources(kind string) bool {
 		kind == "Deployment"
 }
 
-func (c *ConcurrentCleanup) Run(ctx context.Context, objs []client.Object) error {
-	objsCount := len(objs)
-	results := make(chan error, objsCount)
-	for i := range objs {
-		go c.cleanupResource(ctx, objs[i], results)
+func (c *ConcurrentCleanup) Run(ctx context.Context, resources []shared.Resource) error {
+	count := len(resources)
+	results := make(chan error, count)
+	for i := range resources {
+		go c.cleanupResource(ctx, resources[i], results)
 	}
 
 	var errs []error
-	for range objs {
+	for range resources {
 		err := <-results
 		if util.IsNotFound(err) {
-			objsCount--
+			count--
 			continue
 		}
 		if err != nil {
@@ -85,7 +85,7 @@ func (c *ConcurrentCleanup) Run(ctx context.Context, objs []client.Object) error
 		return errors.Join(errs...)
 	}
 
-	if objsCount > 0 {
+	if count > 0 {
 		return ErrDeletionNotFinished
 	}
 	return nil
@@ -93,7 +93,7 @@ func (c *ConcurrentCleanup) Run(ctx context.Context, objs []client.Object) error
 
 func (c *ConcurrentCleanup) cleanupResources(
 	ctx context.Context,
-	resources []client.Object,
+	resources []shared.Resource,
 	status shared.Status,
 ) error {
 	if err := c.Run(ctx, resources); errors.Is(err, ErrDeletionNotFinished) {
@@ -106,6 +106,7 @@ func (c *ConcurrentCleanup) cleanupResources(
 	return nil
 }
 
-func (c *ConcurrentCleanup) cleanupResource(ctx context.Context, obj client.Object, results chan error) {
-	results <- c.clnt.Delete(ctx, obj, client.PropagationPolicy(apimetav1.DeletePropagationBackground))
+func (c *ConcurrentCleanup) cleanupResource(ctx context.Context, res shared.Resource, results chan error) {
+	results <- c.clnt.Delete(ctx, res.ToUnstructured(),
+		client.PropagationPolicy(apimetav1.DeletePropagationBackground))
 }

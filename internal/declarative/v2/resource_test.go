@@ -4,31 +4,37 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	apicorev1 "k8s.io/api/core/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/kyma-project/lifecycle-manager/api/shared"
 	declarativev2 "github.com/kyma-project/lifecycle-manager/internal/declarative/v2"
 )
 
-func newObj(name, namespace, kind string) client.Object {
-	obj := &apicorev1.Pod{
-		ObjectMeta: apimetav1.ObjectMeta{Name: name, Namespace: namespace},
+func makeResource(name, namespace, kind string) shared.Resource {
+	return shared.Resource{
+		Name:      name,
+		Namespace: namespace,
+		GroupVersionKind: apimetav1.GroupVersionKind{
+			Kind: kind,
+		},
 	}
-	obj.SetGroupVersionKind(schema.GroupVersionKind{Kind: kind})
-	return obj
+}
+
+func makeObj(name, namespace, kind string) client.Object {
+	res := makeResource(name, namespace, kind)
+	return res.ToUnstructured()
 }
 
 func TestResourceList_Difference(t *testing.T) {
-	dummyPod := newObj("foo", "default", "Pod")
-	dummyService := newObj("bar", "default", "Service")
-	dummyDeploy := newObj("baz", "default", "Deployment")
+	dummyPod := makeResource("foo", "default", "Pod")
+	dummyService := makeResource("bar", "default", "Service")
+	dummyDeploy := makeResource("baz", "default", "Deployment")
 
 	list1 := declarativev2.ResourceList{dummyPod, dummyService, dummyDeploy}
-	list2 := declarativev2.ResourceList{dummyService}
+	target := []client.Object{makeObj("bar", "default", "Service")}
 
-	diff := list1.Difference(list2)
+	diff := list1.Difference(target)
 
 	assert.Len(t, diff, 2)
 	assert.Contains(t, diff, dummyPod)

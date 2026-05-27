@@ -1,59 +1,33 @@
 package v2
 
 import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"strings"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kyma-project/lifecycle-manager/api/shared"
 )
 
-// ResourceList provides convenience methods for comparing collections of client objects.
-type ResourceList []client.Object
+// ResourceList provides convenience methods for comparing collections of synced resources.
+type ResourceList []shared.Resource
 
-// Difference will return a new ResourceList with objects not contained in rs.
-func (r ResourceList) Difference(rs ResourceList) ResourceList {
-	return r.filter(func(obj client.Object) bool {
-		return !rs.contains(obj)
-	})
-}
-
-// append adds an object to the ResourceList.
-func (r *ResourceList) append(val client.Object) {
-	*r = append(*r, val)
-}
-
-// filter returns a new ResourceList with objects that satisfy the predicate fn.
-func (r ResourceList) filter(fn func(client.Object) bool) ResourceList {
-	var result ResourceList
-	for _, obj := range r {
-		if fn(obj) {
-			result.append(obj)
+// Difference returns resources from r that are not present in target (by identity).
+func (r ResourceList) Difference(target []client.Object) ResourceList {
+	targetIDs := make(map[string]struct{}, len(target))
+	for _, obj := range target {
+		targetIDs[objectID(obj)] = struct{}{}
+	}
+	var diff ResourceList
+	for _, res := range r {
+		if _, found := targetIDs[res.ID()]; !found {
+			diff = append(diff, res)
 		}
 	}
-	return result
+	return diff
 }
 
-// contains checks to see if an object exists.
-func (r ResourceList) contains(obj client.Object) bool {
-	for _, i := range r {
-		if isMatchingObject(i, obj) {
-			return true
-		}
-	}
-	return false
-}
-
-// isMatchingObject returns true if objects match on Name, Namespace and Kind.
-func isMatchingObject(first, second client.Object) bool {
-	if first == nil || second == nil {
-		return false
-	}
-	return first.GetName() == second.GetName() &&
-		first.GetNamespace() == second.GetNamespace() &&
-		getKind(first.GetObjectKind()) == getKind(second.GetObjectKind())
-}
-
-func getKind(obknd schema.ObjectKind) string {
-	if obknd == nil {
-		return ""
-	}
-	return obknd.GroupVersionKind().Kind
+// objectID returns a stable identity string for a client.Object matching shared.Resource.ID() format.
+func objectID(obj client.Object) string {
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	return strings.Join([]string{obj.GetNamespace(), obj.GetName(), gvk.Group, gvk.Version, gvk.Kind}, "/")
 }

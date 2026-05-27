@@ -426,17 +426,10 @@ func (r *Reconciler) evictSKRClientCache(ctx context.Context, manifest *v1beta2.
 }
 
 func (r *Reconciler) renderResourcesForInstall(ctx context.Context, skrClient skrclient.Client,
-	manifest *v1beta2.Manifest, spec *Spec) (
-	ResourceList,
-	ResourceList,
-	error,
-) {
+	manifest *v1beta2.Manifest, spec *Spec,
+) ([]client.Object, ResourceList, error) {
 	manifestStatus := manifest.GetStatus()
-
-	current := make(ResourceList, 0, len(manifestStatus.Synced))
-	for _, res := range manifestStatus.Synced {
-		current = append(current, res.ToUnstructured())
-	}
+	current := ResourceList(manifestStatus.Synced)
 
 	target, err := r.renderTargetResources(ctx, skrClient, manifest, spec)
 	if err != nil {
@@ -448,22 +441,15 @@ func (r *Reconciler) renderResourcesForInstall(ctx context.Context, skrClient sk
 }
 
 func (r *Reconciler) renderResourcesForDelete(ctx context.Context, skrClient skrclient.Client,
-	manifest *v1beta2.Manifest, spec *Spec) (
-	ResourceList,
-	ResourceList,
-	error,
-) {
+	manifest *v1beta2.Manifest, spec *Spec,
+) ([]client.Object, ResourceList, error) {
 	manifestStatus := manifest.GetStatus()
-
-	current := make(ResourceList, 0, len(manifestStatus.Synced))
-	for _, res := range manifestStatus.Synced {
-		current = append(current, res.ToUnstructured())
-	}
+	current := ResourceList(manifestStatus.Synced)
 
 	allModuleCRsDeleted, err := ensureModuleCRsAllDeleted(ctx, skrClient, manifest)
 	switch {
 	case allModuleCRsDeleted:
-		return ResourceList{}, current, nil
+		return []client.Object{}, current, nil
 	case errors.Is(err, modulecr.ErrWaitingForModuleCRsDeletion):
 		manifest.SetStatus(manifest.GetStatus().WithState(shared.StateDeleting).
 			WithOperation("waiting for module crs deletion"))
@@ -534,10 +520,7 @@ func (r *Reconciler) syncManifestState(ctx context.Context, skrClient skrclient.
 
 func (r *Reconciler) checkManagerState(ctx context.Context, clnt skrclient.Client,
 	target []client.Object,
-) (
-	shared.State,
-	error,
-) {
+) (shared.State, error) {
 	managerReadyCheck := r.customStateCheck
 	managerState, err := managerReadyCheck.GetState(ctx, clnt, target)
 	if err != nil {
@@ -567,7 +550,7 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 
 	result := make([]client.Object, 0, len(targetResources.Items))
 	for _, obj := range targetResources.Items {
-		result = append(result, client.Object(obj))
+		result = append(result, obj)
 	}
 	normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
 	return result, nil
@@ -609,10 +592,9 @@ func isNamespaced(gvk schema.GroupVersionKind, skrClient skrclient.Client) (bool
 }
 
 func (r *Reconciler) pruneDiff(ctx context.Context, clnt skrclient.Client, manifest *v1beta2.Manifest,
-	current, target []client.Object, spec *Spec,
+	current ResourceList, target []client.Object, spec *Spec,
 ) error {
-	diff := pruneResource(ResourceList(current).Difference(ResourceList(target)),
-		"Namespace", namespaceNotBeRemoved)
+	diff := pruneResource(current.Difference(target), "Namespace", namespaceNotBeRemoved)
 	if len(diff) == 0 {
 		return nil
 	}
@@ -636,7 +618,7 @@ func (r *Reconciler) pruneDiff(ctx context.Context, clnt skrclient.Client, manif
 	return err
 }
 
-func manifestNotInDeletingAndOciRefNotChangedButDiffDetected(diff []client.Object, manifest *v1beta2.Manifest,
+func manifestNotInDeletingAndOciRefNotChangedButDiffDetected(diff ResourceList, manifest *v1beta2.Manifest,
 	spec *Spec,
 ) bool {
 	return len(diff) > 0 && ociRefNotChanged(manifest, spec.OCIRef) && manifest.GetDeletionTimestamp().IsZero()
@@ -669,13 +651,12 @@ func updateSyncedOCIRefAnnotation(manifest *v1beta2.Manifest, ref string) {
 	manifest.SetAnnotations(annotations)
 }
 
-func pruneResource(diff []client.Object, resourceType string, resourceName string) []client.Object {
-	for index, obj := range diff {
-		if obj.GetObjectKind().GroupVersionKind().Kind == resourceType && obj.GetName() == resourceName {
+func pruneResource(diff ResourceList, resourceType string, resourceName string) ResourceList {
+	for index, res := range diff {
+		if res.Kind == resourceType && res.Name == resourceName {
 			return append(diff[:index], diff[index+1:]...)
 		}
 	}
-
 	return diff
 }
 
