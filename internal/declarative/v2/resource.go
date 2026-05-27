@@ -1,6 +1,9 @@
 package v2
 
-import "sigs.k8s.io/controller-runtime/pkg/client"
+import (
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
 
 // ResourceList provides convenience methods for comparing collections of client objects.
 type ResourceList []client.Object
@@ -40,7 +43,17 @@ func (r ResourceList) contains(obj client.Object) bool {
 
 // isMatchingObject returns true if objects match on Name, Namespace and Kind.
 func isMatchingObject(a, b client.Object) bool {
+	if (a == nil || b == nil) {
+		return false
+	}
 	return a.GetName() == b.GetName() &&
 		a.GetNamespace() == b.GetNamespace() &&
-		a.GetObjectKind().GroupVersionKind().Kind == b.GetObjectKind().GroupVersionKind().Kind
+		getKind(a.GetObjectKind()) == getKind(b.GetObjectKind())
+}
+
+func getKind(obknd schema.ObjectKind) string {
+	if obknd == nil {
+		return ""
+	}
+	return obknd.GroupVersionKind().Kind
 }
