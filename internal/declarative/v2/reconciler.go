@@ -559,10 +559,10 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 // normaliseNamespaces is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
 func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClient skrclient.Client) {
 	for _, obj := range objs {
-		unstructuredObj, ok := obj.(*unstructured.Unstructured)
-		if !ok {
-			continue
-		}
+		// unstructuredObj, ok := obj.(*unstructured.Unstructured)
+		// if !ok {
+		//	continue
+		// }
 		gvk := obj.GetObjectKind().GroupVersionKind()
 		namespaced, err := isNamespaced(gvk, skrClient)
 		if err != nil {
@@ -571,12 +571,12 @@ func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClien
 		if namespaced {
 			if obj.GetNamespace() == "" {
 				obj.SetNamespace(defaultNamespace)
-				unstructuredObj.SetNamespace(defaultNamespace)
+				// unstructuredObj.SetNamespace(defaultNamespace)
 			}
 		} else {
 			if obj.GetNamespace() != "" {
 				obj.SetNamespace("")
-				unstructuredObj.SetNamespace("")
+				// unstructuredObj.SetNamespace("")
 			}
 		}
 	}
