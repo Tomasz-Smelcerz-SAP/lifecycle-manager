@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta2"
-	"github.com/kyma-project/lifecycle-manager/internal/manifest/skrresources"
 )
 
 const (
@@ -27,8 +26,6 @@ const (
 )
 
 type Client interface {
-	skrresources.ResourceInfoConverter
-
 	client.Client
 }
 
@@ -142,27 +139,6 @@ func (s *SKRClient) SetMappingResolver(resolver MappingResolver) {
 
 func (s *SKRClient) SetResourceInfoClientResolver(resolver ResourceInfoClientResolver) {
 	s.resourceInfoClientResolver = resolver
-}
-
-func (s *SKRClient) ResourceInfo(obj *unstructured.Unstructured) (*resource.Info, error) {
-	mapping, err := s.mappingResolver(obj.GetObjectKind().GroupVersionKind(), s.discoveryShortcutExpander)
-	if err != nil {
-		return nil, err
-	}
-
-	clnt, err := s.resourceInfoClientResolver(obj, s, mapping)
-	if err != nil {
-		return nil, err
-	}
-
-	info := &resource.Info{}
-	info.Client = clnt
-	info.Mapping = mapping
-	info.Namespace = obj.GetNamespace()
-	info.Name = obj.GetName()
-	info.Object = obj
-	info.ResourceVersion = obj.GetResourceVersion()
-	return info, nil
 }
 
 func getResourceInfoClient(obj *unstructured.Unstructured,
