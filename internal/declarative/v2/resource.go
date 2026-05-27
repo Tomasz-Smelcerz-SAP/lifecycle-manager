@@ -1,8 +1,8 @@
 package v2
 
 import (
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ResourceList provides convenience methods for comparing collections of client objects.
@@ -43,7 +43,7 @@ func (r ResourceList) contains(obj client.Object) bool {
 
 // isMatchingObject returns true if objects match on Name, Namespace and Kind.
 func isMatchingObject(a, b client.Object) bool {
-	if (a == nil || b == nil) {
+	if a == nil || b == nil {
 		return false
 	}
 	return a.GetName() == b.GetName() &&
