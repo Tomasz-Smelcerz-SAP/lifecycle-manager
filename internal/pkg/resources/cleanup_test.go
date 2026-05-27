@@ -12,9 +12,7 @@ import (
 	apirbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	machineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/cli-runtime/pkg/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -47,17 +45,17 @@ func Test_DeleteDiffResourcesWhenManifestUnderDeleting(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			resourcesInfo := convertToResourceInfo([]machineryruntime.Object{
+			objs := []client.Object{
 				&apicorev1.ServiceAccount{},
 				&apiappsv1.Deployment{},
 				&templatev1alpha1.Sample{},
 				&templatev1alpha1.Managed{},
-			})
+			}
 			fakeClient := NewErrorMockFakeClient(testCase.clientError)
 			manifest := testutils.NewTestManifest("test")
 			manifest.Status.State = shared.StateDeleting
 			cleanup := resources.NewConcurrentCleanup(fakeClient, manifest)
-			_ = cleanup.DeleteDiffResources(t.Context(), resourcesInfo)
+			_ = cleanup.DeleteDiffResources(t.Context(), objs)
 			if manifest.Status.State != testCase.expectManifestState {
 				t.Errorf("SplitResources() manifest.Status.State = %v, want %v",
 					manifest.Status.State, testCase.expectManifestState)
@@ -140,43 +138,40 @@ func getKindName(cr any) string {
 func Test_SplitResources(t *testing.T) {
 	tests := []struct {
 		name                     string
-		resources                []machineryruntime.Object
-		operatorRelatedResources []machineryruntime.Object
-		operatorManagedResources []machineryruntime.Object
+		resources                []client.Object
+		operatorRelatedResources []client.Object
+		operatorManagedResources []client.Object
 	}{
 		{
 			"resources split correctly",
-			[]machineryruntime.Object{
-				&apicorev1.Namespace{},
-				&apiextensionsv1.CustomResourceDefinition{},
-				&apicorev1.ServiceAccount{},
-				&apiappsv1.Deployment{},
+			[]client.Object{
+				withKind(&apicorev1.Namespace{}, "Namespace"),
+				withKind(&apiextensionsv1.CustomResourceDefinition{}, "CustomResourceDefinition"),
+				withKind(&apicorev1.ServiceAccount{}, "ServiceAccount"),
+				withKind(&apiappsv1.Deployment{}, "Deployment"),
 				&templatev1alpha1.Sample{},
 				&templatev1alpha1.Managed{},
 			},
-			[]machineryruntime.Object{
-				&apicorev1.Namespace{},
-				&apiextensionsv1.CustomResourceDefinition{},
-				&apicorev1.ServiceAccount{},
-				&apiappsv1.Deployment{},
+			[]client.Object{
+				withKind(&apicorev1.Namespace{}, "Namespace"),
+				withKind(&apiextensionsv1.CustomResourceDefinition{}, "CustomResourceDefinition"),
+				withKind(&apicorev1.ServiceAccount{}, "ServiceAccount"),
+				withKind(&apiappsv1.Deployment{}, "Deployment"),
 			},
-			[]machineryruntime.Object{
+			[]client.Object{
 				&templatev1alpha1.Sample{}, &templatev1alpha1.Managed{},
 			},
 		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			expectedOperatorRelatedResources := convertToResourceInfo(testCase.operatorRelatedResources)
-			expectedOperatorManagedResources := convertToResourceInfo(testCase.operatorManagedResources)
-			resourcesInfo := convertToResourceInfo(testCase.resources)
-			actualOperatorRelatedResources, actualOperatorManagedResources, _ := resources.SplitResources(resourcesInfo)
+			actualOperatorRelatedResources, actualOperatorManagedResources := resources.SplitResources(testCase.resources)
 
-			if !reflect.DeepEqual(actualOperatorRelatedResources, expectedOperatorRelatedResources) {
+			if !reflect.DeepEqual(actualOperatorRelatedResources, testCase.operatorRelatedResources) {
 				t.Errorf("SplitResources() actualOperatorRelatedResources = %v, want %v",
 					actualOperatorRelatedResources, testCase.operatorRelatedResources)
 			}
-			if !reflect.DeepEqual(actualOperatorManagedResources, expectedOperatorManagedResources) {
+			if !reflect.DeepEqual(actualOperatorManagedResources, testCase.operatorManagedResources) {
 				t.Errorf("SplitResources() actualOperatorManagedResources = %v, want %v",
 					actualOperatorManagedResources, testCase.operatorManagedResources)
 			}
@@ -184,15 +179,10 @@ func Test_SplitResources(t *testing.T) {
 	}
 }
 
-func convertToResourceInfo(objects []machineryruntime.Object) []*resource.Info {
-	items := make([]*resource.Info, 0, len(objects))
-	for _, object := range objects {
-		kind := getKindName(object)
-		v := reflect.ValueOf(object).Elem()
-		v.FieldByName("Kind").SetString(kind)
-		items = append(items, &resource.Info{
-			Object: object,
-		})
-	}
-	return items
+// withKind sets the Kind on a typed object's GVK so SplitResources can classify it.
+func withKind(obj client.Object, kind string) client.Object {
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	gvk.Kind = kind
+	obj.GetObjectKind().SetGroupVersionKind(gvk)
+	return obj
 }

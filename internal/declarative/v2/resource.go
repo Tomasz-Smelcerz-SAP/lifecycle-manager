@@ -1,56 +1,46 @@
 package v2
 
-import "k8s.io/cli-runtime/pkg/resource"
+import "sigs.k8s.io/controller-runtime/pkg/client"
 
-// ResourceList provides convenience methods for comparing collections of Infos.
-// Copy from https://github.com/helm/helm/blob/v3.19.0/pkg/kube/resource.go
-type ResourceList []*resource.Info
+// ResourceList provides convenience methods for comparing collections of client objects.
+type ResourceList []client.Object
 
-// Difference will return a new Result with objects not contained in rs.
+// Difference will return a new ResourceList with objects not contained in rs.
 func (r ResourceList) Difference(rs ResourceList) ResourceList {
-	return r.filter(func(info *resource.Info) bool {
-		return !rs.contains(info)
+	return r.filter(func(obj client.Object) bool {
+		return !rs.contains(obj)
 	})
 }
 
-// Visit implements resource.Visitor.
-func (r ResourceList) Visit(fn resource.VisitorFunc) error {
-	for _, i := range r {
-		if err := fn(i, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// append adds an Info to the Result.
-func (r *ResourceList) append(val *resource.Info) {
+// append adds an object to the ResourceList.
+func (r *ResourceList) append(val client.Object) {
 	*r = append(*r, val)
 }
 
-// filter returns a new Result with Infos that satisfy the predicate fn.
-func (r ResourceList) filter(fn func(*resource.Info) bool) ResourceList {
+// filter returns a new ResourceList with objects that satisfy the predicate fn.
+func (r ResourceList) filter(fn func(client.Object) bool) ResourceList {
 	var result ResourceList
-	for _, i := range r {
-		if fn(i) {
-			result.append(i)
+	for _, obj := range r {
+		if fn(obj) {
+			result.append(obj)
 		}
 	}
 	return result
 }
 
 // contains checks to see if an object exists.
-func (r ResourceList) contains(info *resource.Info) bool {
+func (r ResourceList) contains(obj client.Object) bool {
 	for _, i := range r {
-		if isMatchingInfo(i, info) {
+		if isMatchingObject(i, obj) {
 			return true
 		}
 	}
 	return false
 }
 
-// isMatchingInfo returns true if infos match on Name and GroupVersionKind.
-func isMatchingInfo(a, b *resource.Info) bool {
-	return a.Name == b.Name && a.Namespace == b.Namespace &&
-		a.Mapping.GroupVersionKind.Kind == b.Mapping.GroupVersionKind.Kind
+// isMatchingObject returns true if objects match on Name, Namespace and Kind.
+func isMatchingObject(a, b client.Object) bool {
+	return a.GetName() == b.GetName() &&
+		a.GetNamespace() == b.GetNamespace() &&
+		a.GetObjectKind().GroupVersionKind().Kind == b.GetObjectKind().GroupVersionKind().Kind
 }

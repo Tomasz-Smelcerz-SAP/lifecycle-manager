@@ -8,7 +8,7 @@ import (
 
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,7 +28,6 @@ import (
 	"github.com/kyma-project/lifecycle-manager/internal/service/accessmanager"
 	"github.com/kyma-project/lifecycle-manager/internal/service/manifest/orphan"
 	"github.com/kyma-project/lifecycle-manager/internal/service/skrclient"
-	"github.com/kyma-project/lifecycle-manager/pkg/common"
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
 	"github.com/kyma-project/lifecycle-manager/pkg/queue"
 	"github.com/kyma-project/lifecycle-manager/pkg/util"
@@ -434,17 +433,13 @@ func (r *Reconciler) renderResourcesForInstall(ctx context.Context, skrClient sk
 ) {
 	manifestStatus := manifest.GetStatus()
 
-	var err error
-	var target, current ResourceList
-
-	converter := skrresources.NewDefaultResourceToInfoConverter(skrresources.ResourceInfoConverter(skrClient),
-		apimetav1.NamespaceDefault)
-	if current, err = converter.ResourcesToInfos(manifestStatus.Synced); err != nil {
-		manifest.SetStatus(manifestStatus.WithState(shared.StateError).WithErr(err))
-		return nil, nil, err
+	current := make(ResourceList, 0, len(manifestStatus.Synced))
+	for _, res := range manifestStatus.Synced {
+		current = append(current, res.ToUnstructured())
 	}
 
-	if target, err = r.renderTargetResources(ctx, converter, manifest, spec); err != nil {
+	target, err := r.renderTargetResources(ctx, skrClient, manifest, spec)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -460,14 +455,9 @@ func (r *Reconciler) renderResourcesForDelete(ctx context.Context, skrClient skr
 ) {
 	manifestStatus := manifest.GetStatus()
 
-	var err error
-	var target, current ResourceList
-
-	converter := skrresources.NewDefaultResourceToInfoConverter(skrresources.ResourceInfoConverter(skrClient),
-		apimetav1.NamespaceDefault)
-	if current, err = converter.ResourcesToInfos(manifestStatus.Synced); err != nil {
-		manifest.SetStatus(manifestStatus.WithState(shared.StateError).WithErr(err))
-		return nil, nil, err
+	current := make(ResourceList, 0, len(manifestStatus.Synced))
+	for _, res := range manifestStatus.Synced {
+		current = append(current, res.ToUnstructured())
 	}
 
 	allModuleCRsDeleted, err := ensureModuleCRsAllDeleted(ctx, skrClient, manifest)
@@ -484,7 +474,8 @@ func (r *Reconciler) renderResourcesForDelete(ctx context.Context, skrClient skr
 	}
 
 	// we're here only if allModuleCRsDeleted == false and err == nil.
-	if target, err = r.renderTargetResources(ctx, converter, manifest, spec); err != nil {
+	target, err := r.renderTargetResources(ctx, skrClient, manifest, spec)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -504,7 +495,7 @@ func ensureModuleCRsAllDeleted(ctx context.Context, skrClient skrclient.Client, 
 }
 
 func (r *Reconciler) syncManifestState(ctx context.Context, skrClient skrclient.Client, manifest *v1beta2.Manifest,
-	target []*resource.Info,
+	target []client.Object,
 ) error {
 	manifestStatus := manifest.GetStatus()
 
@@ -542,7 +533,7 @@ func (r *Reconciler) syncManifestState(ctx context.Context, skrClient skrclient.
 }
 
 func (r *Reconciler) checkManagerState(ctx context.Context, clnt skrclient.Client,
-	target []*resource.Info,
+	target []client.Object,
 ) (
 	shared.State,
 	error,
@@ -559,10 +550,10 @@ func (r *Reconciler) checkManagerState(ctx context.Context, clnt skrclient.Clien
 }
 
 func (r *Reconciler) renderTargetResources(ctx context.Context,
-	converter skrresources.ResourceToInfoConverter,
+	skrClient skrclient.Client,
 	manifest *v1beta2.Manifest,
 	spec *Spec,
-) ([]*resource.Info, error) {
+) ([]client.Object, error) {
 	targetResources, err := r.cachedManifestParser.Parse(spec)
 	if err != nil {
 		return nil, err
@@ -574,22 +565,54 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 		}
 	}
 
-	target, err := converter.UnstructuredToInfos(targetResources.Items)
-	if err != nil {
-		return nil, err
+	result := make([]client.Object, 0, len(targetResources.Items))
+	for _, obj := range targetResources.Items {
+		result = append(result, obj)
 	}
+	normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
+	return result, nil
+}
 
-	return target, nil
+// normaliseNamespaces is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
+func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClient skrclient.Client) {
+	for _, obj := range objs {
+		unstructuredObj, ok := obj.(*unstructured.Unstructured)
+		if !ok {
+			continue
+		}
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		namespaced, err := isNamespaced(gvk, skrClient)
+		if err != nil {
+			continue
+		}
+		if namespaced {
+			if obj.GetNamespace() == "" {
+				obj.SetNamespace(defaultNamespace)
+				unstructuredObj.SetNamespace(defaultNamespace)
+			}
+		} else {
+			if obj.GetNamespace() != "" {
+				obj.SetNamespace("")
+				unstructuredObj.SetNamespace("")
+			}
+		}
+	}
+}
+
+func isNamespaced(gvk schema.GroupVersionKind, skrClient skrclient.Client) (bool, error) {
+	mapper := skrClient.RESTMapper()
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return false, fmt.Errorf("failed to get REST mapping for %s: %w", gvk.Kind, err)
+	}
+	return mapping.Scope.Name() == "namespace", nil
 }
 
 func (r *Reconciler) pruneDiff(ctx context.Context, clnt skrclient.Client, manifest *v1beta2.Manifest,
-	current, target []*resource.Info, spec *Spec,
+	current, target []client.Object, spec *Spec,
 ) error {
-	diff, err := pruneResource(ResourceList(current).Difference(target), "Namespace", namespaceNotBeRemoved)
-	if err != nil {
-		manifest.SetStatus(manifest.GetStatus().WithErr(err))
-		return err
-	}
+	diff := pruneResource(ResourceList(current).Difference(ResourceList(target)),
+		"Namespace", namespaceNotBeRemoved)
 	if len(diff) == 0 {
 		return nil
 	}
@@ -606,14 +629,14 @@ func (r *Reconciler) pruneDiff(ctx context.Context, clnt skrclient.Client, manif
 		return ErrResourceSyncDiffInSameOCILayer
 	}
 
-	err = resources.NewConcurrentCleanup(clnt, manifest).DeleteDiffResources(ctx, diff)
+	err := resources.NewConcurrentCleanup(clnt, manifest).DeleteDiffResources(ctx, diff)
 	if err != nil {
 		manifest.SetStatus(manifest.GetStatus().WithErr(err))
 	}
 	return err
 }
 
-func manifestNotInDeletingAndOciRefNotChangedButDiffDetected(diff []*resource.Info, manifest *v1beta2.Manifest,
+func manifestNotInDeletingAndOciRefNotChangedButDiffDetected(diff []client.Object, manifest *v1beta2.Manifest,
 	spec *Spec,
 ) bool {
 	return len(diff) > 0 && ociRefNotChanged(manifest, spec.OCIRef) && manifest.GetDeletionTimestamp().IsZero()
@@ -646,18 +669,14 @@ func updateSyncedOCIRefAnnotation(manifest *v1beta2.Manifest, ref string) {
 	manifest.SetAnnotations(annotations)
 }
 
-func pruneResource(diff []*resource.Info, resourceType string, resourceName string) ([]*resource.Info, error) {
-	for index, info := range diff {
-		obj, ok := info.Object.(client.Object)
-		if !ok {
-			return diff, common.ErrTypeAssert
-		}
+func pruneResource(diff []client.Object, resourceType string, resourceName string) []client.Object {
+	for index, obj := range diff {
 		if obj.GetObjectKind().GroupVersionKind().Kind == resourceType && obj.GetName() == resourceName {
-			return append(diff[:index], diff[index+1:]...), nil
+			return append(diff[:index], diff[index+1:]...)
 		}
 	}
 
-	return diff, nil
+	return diff
 }
 
 func (r *Reconciler) getTargetClient(ctx context.Context, manifest *v1beta2.Manifest) (skrclient.Client, error) {
