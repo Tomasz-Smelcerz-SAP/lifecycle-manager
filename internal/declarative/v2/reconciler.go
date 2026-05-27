@@ -567,7 +567,7 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 
 	result := make([]client.Object, 0, len(targetResources.Items))
 	for _, obj := range targetResources.Items {
-		result = append(result, obj)
+		result = append(result, client.Object(obj))
 	}
 	normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
 	return result, nil
