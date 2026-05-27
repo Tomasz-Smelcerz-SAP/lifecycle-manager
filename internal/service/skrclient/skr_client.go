@@ -80,8 +80,7 @@ type SKRClient struct {
 	unstructuredSyncLock        sync.Mutex
 	unstructuredRESTClientCache map[string]resource.RESTClient
 
-	mappingResolver            MappingResolver
-	resourceInfoClientResolver ResourceInfoClientResolver
+	mappingResolver MappingResolver
 }
 
 func (s *Service) ResolveClient(ctx context.Context, manifest *v1beta2.Manifest) (*SKRClient, error) {
@@ -127,7 +126,6 @@ func (s *Service) ResolveClient(ctx context.Context, manifest *v1beta2.Manifest)
 		unstructuredRESTClientCache: map[string]resource.RESTClient{},
 		Client:                      runtimeClient,
 		mappingResolver:             getResourceMapping,
-		resourceInfoClientResolver:  getResourceInfoClient,
 	}
 
 	return clients, nil
@@ -135,33 +133,6 @@ func (s *Service) ResolveClient(ctx context.Context, manifest *v1beta2.Manifest)
 
 func (s *SKRClient) SetMappingResolver(resolver MappingResolver) {
 	s.mappingResolver = resolver
-}
-
-func (s *SKRClient) SetResourceInfoClientResolver(resolver ResourceInfoClientResolver) {
-	s.resourceInfoClientResolver = resolver
-}
-
-func getResourceInfoClient(obj *unstructured.Unstructured,
-	client *SKRClient,
-	mapping *meta.RESTMapping,
-) (resource.RESTClient,
-	error,
-) {
-	var clnt resource.RESTClient
-	var err error
-	if client.Scheme().IsGroupRegistered(mapping.GroupVersionKind.Group) {
-		clnt, err = client.ClientForMapping(mapping)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		clnt, err = client.UnstructuredClientForMapping(mapping)
-		if err != nil {
-			return nil, err
-		}
-		obj.SetGroupVersionKind(mapping.GroupVersionKind)
-	}
-	return clnt, nil
 }
 
 func setKubernetesDefaults(config *rest.Config) error {
