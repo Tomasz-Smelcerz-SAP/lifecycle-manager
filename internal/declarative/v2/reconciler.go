@@ -549,13 +549,42 @@ func (r *Reconciler) renderTargetResources(ctx context.Context,
 	}
 
 	result := make([]client.Object, 0, len(targetResources.Items))
-	for _, obj := range targetResources.Items {
-		result = append(result, obj)
+	for _, unstrObj := range targetResources.Items {
+		converted := client.Object(unstrObj) // unstructured.Unstructured implements client.Object
+		normaliseNamespace(converted, apimetav1.NamespaceDefault, skrClient)
+		result = append(result, converted)
 	}
-	normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
+	// normaliseNamespaces(result, apimetav1.NamespaceDefault, skrClient)
 	return result, nil
 }
 
+// normaliseNamespaces is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
+func normaliseNamespace(obj client.Object, defaultNamespace string, skrClient skrclient.Client) {
+	// for _, obj := range objs {
+	// unstructuredObj, ok := obj.(*unstructured.Unstructured)
+	// if !ok {
+	//	continue
+	// }
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	namespaced, err := isNamespaced(gvk, skrClient)
+	if err != nil {
+		return
+	}
+	if namespaced {
+		if obj.GetNamespace() == "" {
+			obj.SetNamespace(defaultNamespace)
+			// unstructuredObj.SetNamespace(defaultNamespace)
+		}
+	} else {
+		if obj.GetNamespace() != "" {
+			obj.SetNamespace("")
+			// unstructuredObj.SetNamespace("")
+		}
+	}
+	//}
+}
+
+/*
 // normaliseNamespaces is only a workaround for malformed resources, e.g. by bad charts or wrong type configs.
 func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClient skrclient.Client) {
 	for _, obj := range objs {
@@ -581,6 +610,7 @@ func normaliseNamespaces(objs []client.Object, defaultNamespace string, skrClien
 		}
 	}
 }
+*/
 
 func isNamespaced(gvk schema.GroupVersionKind, skrClient skrclient.Client) (bool, error) {
 	mapper := skrClient.RESTMapper()
